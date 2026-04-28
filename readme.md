@@ -200,3 +200,71 @@ Or write a `Makefile` to compile everything at once.
 ## Bonus
 
 Implementing with a graphics library (e.g., `ncurses` for terminal UI, or a full GUI) earns bonus marks.
+
+---
+
+## Architecture Deep Dive
+
+### How the OS starts
+
+```
+./OS 2 256 8
+```
+
+Standard C++ main — **not** `main(int ram, int hard, int core)`. Always use:
+
+```cpp
+int main(int argc, char* argv[]) {
+    int ram   = atoi(argv[1]);
+    int hdd   = atoi(argv[2]);
+    int cores = atoi(argv[3]);
+}
+```
+
+---
+
+### How a task launches (full flow)
+
+```
+OS (parent)                          Task (child)
+    |                                     |
+    |-- fork() -------------------------->|
+    |                                     |-- sends "REQUEST 10 0\n" via pipe
+    |<-- reads pipe ----------------------|
+    |-- checks resource_manager           |
+    |   if OK:  sends "GRANT"            |
+    |   if not: sends "DENY" + kills     |
+    |                                     |-- receives GRANT → runs task logic
+    |-- creates PCB, adds to queue        |
+    |-- xterm opens for that child        |
+```
+
+Key point: **PCB is created after GRANT, not before.** The task sends its RAM/HDD requirements via pipe → OS reads them → checks availability → if granted, OS creates the PCB and stores those values in it.
+
+---
+
+### Who owns what data
+
+| File | Owns |
+|---|---|
+| `process.h` | PCB struct, State enum |
+| `resource.cpp` | total/available RAM, HDD, cores — global to the OS |
+| `kernel.cpp` | process table (array of all PCBs), user/kernel mode switch |
+| `ready_queue.cpp` | queue of PCBs waiting for CPU |
+| `scheduler.cpp` | Round Robin + Multilevel logic, runs in a thread |
+| `os.cpp` | `main()`, boot, menu, fork/exec, ties everything together |
+| `tasks/*.cpp` | 20 independent executables |
+
+---
+
+### Exact build sequence
+
+```
+1. process.h           — PCB struct, State enum
+2. resource.cpp        — hardware tracking (RAM/HDD/cores)
+3. os.cpp skeleton     — boot screen, parse args, call resource init, menu shell
+4. kernel.cpp          — process table, fork/exec one task to test pipe
+5. ready_queue.cpp     — queue of PCBs
+6. scheduler.cpp       — Round Robin + Multilevel scheduling in a thread
+7. tasks/*.cpp         — 20 task executables, one at a time
+```
