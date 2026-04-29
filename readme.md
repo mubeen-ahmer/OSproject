@@ -268,3 +268,24 @@ Key point: **PCB is created after GRANT, not before.** The task sends its RAM/HD
 6. scheduler.cpp       — Round Robin + Multilevel scheduling in a thread
 7. tasks/*.cpp         — 20 task executables, one at a time
 ```
+
+## TASK CREATION
+
+```
+OS.cpp (parent)                    child process
+      |                                  |
+      |---- fork() -------------------> |
+      |                                  |-- writes "REQUEST 10 0\n" to pipe
+      |<-- reads pipe ------------------|
+      |-- calls allocateRam(10)          |
+      |   allocateHardDisk(0)            |
+      |   allocateCore()                 |
+      |                                  |
+      | if all OK:                       |
+      |-- writes "GRANT" to pipe ------> |-- execs xterm -e ./calculator
+      |-- creates PCB                    |
+      |                                  |
+      | if not OK:                       |
+      |-- writes "DENY" to pipe ------> |-- exits
+      |-- shows "Not enough resources"   |
+```
