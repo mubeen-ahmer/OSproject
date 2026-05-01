@@ -1,6 +1,10 @@
 #ifndef RESOURCE_H
 #define RESOURCE_H
 
+extern int totalRam, availableRam;
+extern int totalHardDisk, availableHardDisk;
+extern int totalCores, availableCores;
+
 int initialize(int ram, int hard, int core);
 int allocateRam(int ram);
 void freeRam(int ram);

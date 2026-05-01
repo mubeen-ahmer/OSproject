@@ -4,7 +4,9 @@
 #include <sys/wait.h>
 #include "config.h"
 #include <cstring>
+#include "kernel.h"
 #include "resource.h"
+#include "process.h"
 using namespace std;
 void gotoxy(int ,int);
 void welcomeScreen();
@@ -54,92 +56,156 @@ int main(int argc,char* argv[]){
         cin >> choice;
 
         switch(choice){
-            case 1:
-            {
-                cout<<"ENTERING"<<endl;
+            case 1:{
                 int p1fd[2];
                 int p2fd[2];
                 pipe(p1fd); //pipe1 : parent writes, child reads
                 pipe(p2fd); //pipe2 : child writes, parent reads
                 pid_t pid=fork();
                 if(pid==0){  //child
-                     cout<<"childstart"<<endl;
                     int ram=CALC_RAM;
-                    
                     close(p1fd[1]);
                     close(p2fd[0]);
+
                     string message="REQUEST "+to_string(ram);
                     const char *msg=message.c_str();
                     write(p2fd[1],msg,strlen(msg));
-                    // close(p2fd[1]);
-                    cout<<"child wrote"<<endl;
+
                     char buffer[100];
                     int n=read(p1fd[0],buffer,sizeof(buffer));
-                    // close(p1fd[0]);
-                    cout<<"child read"<<endl;
-
                     buffer[n]='\0';
+
                     if(strcmp(buffer,"GRANT")==0){
-                        cout << "launching xterm" << endl;
-                        sleep(4);
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/calculator", NULL);
-                        // cout<<"Eror";
-                        
+                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/calculator", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
-                        cout<<"deny"<<endl;   
                         exit(1);
                     }
-                    // cout<<"childend"<<endl;
-                    // exit(1);
-                    //  sleep(7);
                 }
                 else{   //parent
-                    cout<<"parentstart"<<endl;
                     close(p1fd[0]);
                     close(p2fd[1]);
+
                     char buffer[100];
                     int n=read(p2fd[0],buffer,sizeof(buffer));
-                    // close(p2fd[0]);
-                    cout<<"parent read"<<endl;
-
                     buffer[n]='\0';
+
                     string received(buffer);
-                    int requestedRam=stoi(received.substr(8));
+                    
                     const char*permission;
                     string msg;
-                    if(allocateRam(requestedRam)!=0 || allocateCore() !=0){
-                        msg="DENY";
+                    
+                    PCB* pcb = nullptr;
+                    int requestedRam=stoi(received.substr(8));
+                    if(allocateRam(requestedRam) != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        // no RAM was taken, nothing to free
+                    }
+                    else if(allocateCore() != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        freeRam(requestedRam);  // give RAM back since core failed
+                    }
+                    else {
+                        msg="GRANT";
                         permission=msg.c_str();
                         write(p1fd[1],permission,strlen(permission));
-                        // close(p1fd[0]);
-                        cout<<"parent wrote deny"<<endl;
-                        
-                        printStatus();
-                        
-                    } 
-                    else {
-                    msg="GRANT";
-                    permission=msg.c_str();
-                    
-                    write(p1fd[1],permission,strlen(permission));
-                    // close(p1fd[0]);
-                    cout<<"parent wrote grant"<<endl;
-                    
+                        pcb = new PCB(pid, getpid(), "calculator", Running, CALC_RAM);
+                        addProcess(pcb);
                     }
                     int status;
                     wait(&status);
-                    cout<<status<<endl;
-                    // cin.ignore();
-                    // cin.get();
-                    // cout<<"exting"<<endl;
-                    // sleep(5);
+                    if(pcb != nullptr){
+                        removeProcess(pcb);
+                        freeRam(requestedRam);
+                        freeCore();
+                        delete pcb;
+                    }
                 }
             }
             break;
             case 2:  break;
-            case 3:  break;
+            case 3:
+            {
+                int p1fd[2];
+                int p2fd[2];
+                pipe(p1fd); //pipe1 : parent writes, child reads
+                pipe(p2fd); //pipe2 : child writes, parent reads
+                pid_t pid=fork();
+                if(pid==0){  //child
+                    int ram=CLOCK_RAM;
+                    close(p1fd[1]);
+                    close(p2fd[0]);
+
+                    string message="REQUEST "+to_string(ram);
+                    const char *msg=message.c_str();
+                    write(p2fd[1],msg,strlen(msg));
+
+                    char buffer[100];
+                    int n=read(p1fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    if(strcmp(buffer,"GRANT")==0){
+                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/clock", NULL);    
+                        exit(0);
+                    }
+                    else if(strcmp(buffer,"DENY")==0){
+                        exit(1);
+                    }
+                }
+                else{   //parent
+                    close(p1fd[0]);
+                    close(p2fd[1]);
+
+                    char buffer[100];
+                    int n=read(p2fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    string received(buffer);
+                    
+                    const char*permission;
+                    string msg;
+                    
+                    PCB* pcb = nullptr;
+                    int requestedRam=stoi(received.substr(8));
+                    if(allocateRam(requestedRam) != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        // no RAM was taken, nothing to free
+                    }
+                    else if(allocateCore() != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        freeRam(requestedRam);  // give RAM back since core failed
+                    }
+                    else {
+                        msg="GRANT";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));
+                        pcb = new PCB(pid, getpid(), "clock", Running, CLOCK_RAM);
+                        addProcess(pcb);
+                    }
+                    int status;
+                    wait(&status);
+                    if(pcb != nullptr){
+                        removeProcess(pcb);
+                        freeRam(requestedRam);
+                        freeCore();
+                        delete pcb;
+                    }
+                }
+            }
+            break;
             case 4:  break;
             case 5:  break;
             case 6:  break;
@@ -151,7 +217,88 @@ int main(int argc,char* argv[]){
             case 12: break;
             case 13: break;
             case 14: break;
-            case 15: break;
+            case 15:
+            {
+                int p1fd[2];
+                int p2fd[2];
+                pipe(p1fd); //pipe1 : parent writes, child reads
+                pipe(p2fd); //pipe2 : child writes, parent reads
+                pid_t pid=fork();
+                if(pid==0){  //child
+                    int ram=RAM_VIEWER_RAM;
+                    close(p1fd[1]);
+                    close(p2fd[0]);
+
+                    string message="REQUEST "+to_string(ram);
+                    const char *msg=message.c_str();
+                    write(p2fd[1],msg,strlen(msg));
+
+                    char buffer[100];
+                    int n=read(p1fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    if(strcmp(buffer,"GRANT")==0){
+                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/ram_viewer",
+                        to_string(totalRam).c_str(),
+                        to_string(availableRam).c_str(),
+                        to_string(totalHardDisk).c_str(),
+                        to_string(availableHardDisk).c_str(),
+                        to_string(totalCores).c_str(),
+                        to_string(availableCores).c_str(),
+                        NULL);
+                        exit(0);
+                    }
+                    else if(strcmp(buffer,"DENY")==0){
+                        exit(1);
+                    }
+                }
+                else{   //parent
+                    close(p1fd[0]);
+                    close(p2fd[1]);
+
+                    char buffer[100];
+                    int n=read(p2fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    string received(buffer);
+                    
+                    const char*permission;
+                    string msg;
+                    
+                    PCB* pcb = nullptr;
+                    int requestedRam=stoi(received.substr(8));
+                    if(allocateRam(requestedRam) != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        // no RAM was taken, nothing to free
+                    }
+                    else if(allocateCore() != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        freeRam(requestedRam);  // give RAM back since core failed
+                    }
+                    else {
+                        msg="GRANT";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));
+                        pcb = new PCB(pid, getpid(), "ram_viewer", Running, RAM_VIEWER_RAM);
+                        addProcess(pcb);
+                    }
+                    int status;
+                    wait(&status);
+                    if(pcb != nullptr){
+                        removeProcess(pcb);
+                        freeRam(requestedRam);
+                        freeCore();
+                        delete pcb;
+                    }
+                }
+            }
+            break;
             case 16: break;
             case 17: break;
             case 18: break;
@@ -168,7 +315,6 @@ int main(int argc,char* argv[]){
 
     return 0;
 }
-
 // a function copied from internet, it move the cursor at x, y cordinate on console
 void gotoxy(int x, int y) {
     cout << "\033[" << y << ";" << x << "H";

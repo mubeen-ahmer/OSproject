@@ -289,3 +289,36 @@ OS.cpp (parent)                    child process
       |-- writes "DENY" to pipe ------> |-- exits
       |-- shows "Not enough resources"   |
 ```
+
+# Task Classification
+```
+Type 1 — Foreground (Interactive)
+User must interact constantly. Goes BLOCKED when waiting for input.
+
+Calculator
+Notepad
+File Editor
+Text Search
+Minesweeper
+Type 2 — Background (Auto-finish)
+Runs on its own, finishes automatically, no user input.
+
+File Copy
+File Move
+File Delete
+Print Simulation
+Music Simulation
+Auto Backup
+Log Generator
+Random Number Generator
+Type 3 — System/Utility (Continuous)
+Runs forever until killed, auto-updates.
+
+Clock
+Calendar
+RAM Viewer
+Process Viewer
+Timer/Alarm
+File Create
+File Info
+```

@@ -7,6 +7,8 @@ int availableHardDisk;
 int totalCores;
 int availableCores;
 
+
+
 int initialize(int ram,int hard,int core){
     if ( ram < 0 || hard < 0 || core < 0 ){
         return 1;
