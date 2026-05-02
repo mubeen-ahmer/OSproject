@@ -1,6 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#define FILE_INFO_RAM    1
 #define CALC_RAM         1
 #define NOTEPAD_RAM      2
 #define CLOCK_RAM        1
@@ -9,7 +10,6 @@
 #define FILE_MOVE_RAM    2
 #define FILE_DELETE_RAM  1
 #define FILE_CREATE_RAM  1
-#define FILE_INFO_RAM    1
 #define FILE_EDITOR_RAM  2
 #define TEXT_SEARCH_RAM  2
 #define MINESWEEPER_RAM  3
