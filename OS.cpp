@@ -28,6 +28,7 @@ int main(int argc,char* argv[]){
     welcomeScreen();
     int choice;
     do{
+        checkAndCleanProcesses();
         system("clear");
         printStatus();
         cout << "\n===== windows =====" << endl;
@@ -76,7 +77,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/calculator", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/calculator", NULL);  
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -119,14 +120,7 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "calculator", Running, CALC_RAM);
                         addProcess(pcb);
                     }
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
                 }
             }
             break;
@@ -150,7 +144,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/notepad", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/notepad", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -193,14 +187,7 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "notepad", Running, NOTEPAD_RAM);
                         addProcess(pcb);
                     }
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
                 }
             }            
             break;
@@ -224,7 +211,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/clock", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/clock", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -267,14 +254,7 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "clock", Running, CLOCK_RAM);
                         addProcess(pcb);
                     }
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
                 }
             }
             break;
@@ -298,7 +278,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/calender", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/calender", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -341,15 +321,7 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "calender", Running, CALENDAR_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
                 }
             }
             break;
@@ -373,7 +345,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/fileCopy", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/fileCopy", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -416,15 +388,8 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "fileCopy", Running, FILE_COPY_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
+                     
                 }
             }
             break;
@@ -448,7 +413,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/fileMove", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/fileMove", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -491,15 +456,8 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "fileMove", Running, FILE_MOVE_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
+                     
                 }
             }  
             break;
@@ -523,7 +481,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/fileDelete", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/fileDelete", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -566,15 +524,8 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "fileDelete", Running, FILE_DELETE_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
+                     
                 }
             }  
             break;
@@ -598,7 +549,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/fileCreate", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/fileCreate", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -641,15 +592,8 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "fileCreate", Running, FILE_CREATE_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
+                     
                 }
             }  
             break;
@@ -673,7 +617,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/fileInfo", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/fileInfo", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -716,15 +660,8 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "fileInfo", Running, FILE_INFO_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
+                     
                 }
             }  
             break;
@@ -748,7 +685,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/randomNumGen", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/randomNumGen", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -791,15 +728,8 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "randomNumGen", Running, RAND_GEN_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
+                     
                 }
             }  
             break;
@@ -823,7 +753,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/wordCount", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/wordCount", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -866,15 +796,8 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "wordCount", Running, WORD_COUNT_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
+                     
                 }
             }           
             break;
@@ -898,7 +821,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/mineSweeper", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/mineSweeper", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -941,15 +864,6 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "mineSweeper", Running, MINESWEEPER_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
                 }
             } 
             break;
@@ -973,7 +887,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/musicSim", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/musicSim", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -1016,15 +930,6 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "musicSim", Running, MUSIC_SIM_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
                 }
             }            
             break;
@@ -1048,7 +953,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/printSim", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/printSim", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -1091,15 +996,7 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "printSim", Running, PRINT_SIM_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                         
                 }
             } 
             break;
@@ -1123,7 +1020,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/ram_viewer",
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/ram_viewer",
                         to_string(totalRam).c_str(),
                         to_string(availableRam).c_str(),
                         to_string(totalHardDisk).c_str(),
@@ -1173,14 +1070,7 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "ram_viewer", Running, RAM_VIEWER_RAM);
                         addProcess(pcb);
                     }
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
                 }
             }
             break;
@@ -1204,7 +1094,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/processViewer", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/processViewer", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -1247,15 +1137,8 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "processViewer", Running, PROC_VIEWER_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4); // wait for the process to finish
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                    
+                     
                 }
             }
             break;
@@ -1279,7 +1162,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/logGenerator", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/logGenerator", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -1322,15 +1205,8 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "logGenerator", Running, LOG_GEN_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
+                     
                 }
             } 
             break;
@@ -1354,7 +1230,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/logViewer", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/logViewer", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -1397,15 +1273,8 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "logViewer", Running, LOG_VIEWER_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
+                     
                 }
             } 
             break;
@@ -1429,7 +1298,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/timer", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/timer", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -1472,15 +1341,8 @@ int main(int argc,char* argv[]){
                         pcb = new PCB(pid, getpid(), "timer", Running, TIMER_RAM);
                         addProcess(pcb);
                     }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
-                    }
+                     
+                     
                 }
             } 
             break;
@@ -1504,7 +1366,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/passwordGenerator", NULL);    
+                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/passwordGenerator", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -1546,15 +1408,6 @@ int main(int argc,char* argv[]){
                         write(p1fd[1],permission,strlen(permission));
                         pcb = new PCB(pid, getpid(), "passwordGenerator", Running, PASSWORD_GENERATOR_RAM);
                         addProcess(pcb);
-                    }
-                    sleep(4);
-                    int status;
-                    wait(&status);
-                    if(pcb != nullptr){
-                        removeProcess(pcb);
-                        freeRam(requestedRam);
-                        freeCore();
-                        delete pcb;
                     }
                 }
             }   

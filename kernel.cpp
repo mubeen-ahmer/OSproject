@@ -1,4 +1,6 @@
 #include <iostream>
+#include <sys/wait.h>
+#include "resource.h"
 using namespace std;
 #include "process.h"
 struct PCBNode{
@@ -7,6 +9,7 @@ struct PCBNode{
     PCBNode(PCB*p):pcb(p),next(nullptr){};
 };
 PCBNode*head=nullptr;
+
 
 void addProcess(PCB*pcb){
     PCBNode*node=new PCBNode(pcb);
@@ -56,5 +59,20 @@ void listProcess(){
         cout << "HardDisk: "  << temp->pcb->requiredHardDisk        << endl;
         cout << "------------------------" << endl;
         temp = temp->next;
+    }
+}
+
+void checkAndCleanProcesses(){
+    PCBNode* temp = head;
+    while(temp){
+        PCBNode* next = temp->next;  // save next before possible deletion
+        int status;
+        if(waitpid(temp->pcb->pid, &status, WNOHANG) > 0){
+            // process finished
+            freeRam(temp->pcb->requiredRAM);
+            freeCore();
+            removeProcess(temp->pcb);
+        }
+        temp = next;
     }
 }
