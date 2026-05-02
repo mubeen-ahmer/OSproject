@@ -1,39 +1,42 @@
 #include <iostream>
 #include <sys/wait.h>
+#include <pthread.h>
 #include "resource.h"
-using namespace std;
 #include "process.h"
-struct PCBNode{
-    PCB*pcb;
-    PCBNode*next;
-    PCBNode(PCB*p):pcb(p),next(nullptr){};
+#include "kernel.h"
+using namespace std;
+
+// ─── Global mutex ────────────────────────────────────────────────────────────
+// Protects the PCB linked list and resource counters from race conditions
+// between the main thread (launching tasks) and the reaper thread (cleaning up)
+pthread_mutex_t gMutex = PTHREAD_MUTEX_INITIALIZER;
+
+struct PCBNode {
+    PCB*     pcb;
+    PCBNode* next;
+    PCBNode(PCB* p) : pcb(p), next(nullptr) {}
 };
-PCBNode*head=nullptr;
 
+static PCBNode* head = nullptr;
 
-void addProcess(PCB*pcb){
-    PCBNode*node=new PCBNode(pcb);
-    if (!head){
-        head=node; 
-        return;
-    }
-    PCBNode*temp=head;
-    while(temp->next){
-        temp=temp->next;
-    }
-    temp->next=node;
+void addProcess(PCB* pcb) {
+    PCBNode* node = new PCBNode(pcb);
+    if (!head) { head = node; return; }
+    PCBNode* temp = head;
+    while (temp->next) temp = temp->next;
+    temp->next = node;
 }
-void removeProcess(PCB*pcb){
-    if(!head) return;
+
+void removeProcess(PCB* pcb) {
+    if (!head) return;
     PCBNode* temp = head;
     PCBNode* prev = nullptr;
-    while(temp){
-        if(temp->pcb->pid == pcb->pid){
-            if(!prev)
-                head = temp->next;
-            else
-                prev->next = temp->next;
-            delete temp;
+    while (temp) {
+        if (temp->pcb->pid == pcb->pid) {
+            if (!prev) head = temp->next;
+            else       prev->next = temp->next;
+            delete temp->pcb;  // free the PCB object
+            delete temp;       // free the node
             return;
         }
         prev = temp;
@@ -41,38 +44,62 @@ void removeProcess(PCB*pcb){
     }
 }
 
-void listProcess(){
-    if(!head){
-        cout << "No processes running" << endl;
-        return;
-    }
-    
-    string stateNames[] = {"Ready", "Running", "Blocked", "Terminated"};
-    
+void listProcess() {
+    if (!head) { cout << "No processes running" << endl; return; }
+    const char* stateNames[] = { "Ready", "Running", "Blocked", "Terminated" };
     PCBNode* temp = head;
-    while(temp){
-        cout << "PID: "       << temp->pcb->pid                    << endl;
-        cout << "PPID: "      << temp->pcb->ppid                   << endl;
-        cout << "Name: "      << temp->pcb->name                   << endl;
-        cout << "State: "     << stateNames[temp->pcb->state]      << endl;
-        cout << "RAM: "       << temp->pcb->requiredRAM             << endl;
-        cout << "HardDisk: "  << temp->pcb->requiredHardDisk        << endl;
+    while (temp) {
+        cout << "PID: "      << temp->pcb->pid                   << endl;
+        cout << "PPID: "     << temp->pcb->ppid                  << endl;
+        cout << "Name: "     << temp->pcb->name                  << endl;
+        cout << "State: "    << stateNames[temp->pcb->state]     << endl;
+        cout << "RAM: "      << temp->pcb->requiredRAM           << " MB" << endl;
+        cout << "HDD: "      << temp->pcb->requiredHardDisk      << " MB" << endl;
         cout << "------------------------" << endl;
         temp = temp->next;
     }
 }
 
-void checkAndCleanProcesses(){
-    PCBNode* temp = head;
-    while(temp){
-        PCBNode* next = temp->next;  // save next before possible deletion
-        int status;
-        if(waitpid(temp->pcb->pid, &status, WNOHANG) > 0){
-            // process finished
-            freeRam(temp->pcb->requiredRAM);
-            freeCore();
-            removeProcess(temp->pcb);
+// ─── Process reaper ───────────────────────────────────────────────────────────
+//
+// KEY FIX — why the old approach was broken:
+//
+//   Old code iterated the PCB list and called waitpid(specific_pid, WNOHANG).
+//   This means:
+//     1. DENIED children (never added to PCB) were never reaped → zombies.
+//     2. The function only ran at the top of the menu loop, so resources
+//        were not freed until the user typed the NEXT menu choice.
+//
+//   New approach — flip the loop:
+//     Call waitpid(-1, WNOHANG) to ask "did ANY child die?"
+//     If yes, look that pid up in the PCB list.
+//       - Found  → free its RAM + core, remove from list.
+//       - Not found → it was a DENIED child; just reaped, nothing to free.
+//     Repeat until no more dead children this cycle.
+//
+//   This single change fixes BOTH problems at once.
+//
+void checkAndCleanProcesses() {
+    int    status;
+    pid_t  dead;
+
+    // Loop until no more zombie children exist right now
+    while ((dead = waitpid(-1, &status, WNOHANG)) > 0) {
+
+        // Search PCB list for this pid
+        PCBNode* temp = head;
+        while (temp) {
+            if (temp->pcb->pid == dead) {
+                // This was a running (granted) process — free its resources
+                freeRam(temp->pcb->requiredRAM);
+                freeCore();
+                removeProcess(temp->pcb);
+                reprintStatusInPlace(); // update the header in-place instantly
+                break;
+            }
+            temp = temp->next;
         }
-        temp = next;
+        // If temp == nullptr here, pid wasn't in PCB (= denied child).
+        // waitpid already reaped it; nothing else to do.
     }
 }

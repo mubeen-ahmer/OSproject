@@ -1,1443 +1,216 @@
 #include <iostream>
 #include <unistd.h>
 #include <string>
-#include <sys/wait.h>
-#include "config.h"
 #include <cstring>
+#include <sys/wait.h>
+#include <pthread.h>
+#include "config.h"
 #include "kernel.h"
 #include "resource.h"
 #include "process.h"
 using namespace std;
-void gotoxy(int ,int);
+void gotoxy(int x, int y);
 void welcomeScreen();
 void goodbye();
 
-int main(int argc,char* argv[]){
-    if (argc < 4){
-        cout<<"wrong command"<<endl;
-        cout<<"use : ./OS RAM HDD Cores"<<endl;
-        return 1;
-    }
-    int ram=atoi(argv[1]);
-    int hdd=atoi(argv[2]);
-    int core=atoi(argv[3]);
-    if(initialize(ram,hdd,core)==1){
-        cout<<"invalid arguments,none of these can't be negative"<<endl;
-        return 1;
-    }
-    welcomeScreen();
-    int choice;
-    do{
+
+volatile bool osRunning = true;
+
+void* reaperThread(void* arg) {
+    while (osRunning) {
+        pthread_mutex_lock(&gMutex);
         checkAndCleanProcesses();
+        pthread_mutex_unlock(&gMutex);
+        sleep(1);
+    }
+    return nullptr;
+}
+
+void launchTask(const char* name, const char* execPath, int ramAmount) {
+    int p1fd[2];// pipe1 : parent writes, child reads
+    int p2fd[2];// pipe2 : child writes, parent reads
+
+    if (pipe(p1fd) == -1 || pipe(p2fd) == -1) {
+        perror("pipe");
+        return;
+    }
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        close(p1fd[0]); close(p1fd[1]);
+        close(p2fd[0]); close(p2fd[1]);
+        return;
+    }
+    if (pid == 0) { // child
+        close(p1fd[1]);
+        close(p2fd[0]);
+
+        string message = "REQUEST " + to_string(ramAmount);
+        const char* msg = message.c_str();
+        write(p2fd[1], msg, strlen(msg));
+        close(p2fd[1]); 
+
+        char buffer[100];
+        int n = read(p1fd[0], buffer, sizeof(buffer));
+        buffer[n] = '\0';
+        close(p1fd[0]); 
+
+        if (strcmp(buffer, "GRANT") == 0) {
+            execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", execPath, NULL);
+            perror("execlp: xterm failed"); // only reached if execlp fails
+        }
+        exit(1);
+    }
+    else { // parent
+        close(p1fd[0]);
+        close(p2fd[1]);
+
+        char buffer[100];
+        int n = read(p2fd[0], buffer, sizeof(buffer));
+        buffer[n] = '\0';
+        close(p2fd[0]); 
+
+        string received(buffer);
+
+        const char* permission;
+        string msg;
+
+        PCB* pcb = nullptr;
+        int requestedRam = stoi(received.substr(8));
+
+        pthread_mutex_lock(&gMutex); // FIX: lock before touching resources + PCB
+
+        if (allocateRam(requestedRam) != 0) {
+            msg = "DENY";
+            permission = msg.c_str();
+            write(p1fd[1], permission, strlen(permission));
+            close(p1fd[1]); 
+            printStatus();
+            cin.ignore();
+            cin.get();
+        }
+        else if (allocateCore() != 0) {
+            msg = "DENY";
+            permission = msg.c_str();
+            write(p1fd[1], permission, strlen(permission));
+            close(p1fd[1]); 
+            printStatus();
+            freeRam(requestedRam);
+            cin.ignore();
+            cin.get();
+        }
+        else {
+            msg = "GRANT";
+            permission = msg.c_str();
+            write(p1fd[1], permission, strlen(permission));
+            close(p1fd[1]); 
+            pcb = new PCB(pid, getpid(), name, Running, ramAmount);
+            addProcess(pcb);
+        }
+
+        pthread_mutex_unlock(&gMutex); // FIX: unlock after done
+    }
+}
+
+int main(int argc, char* argv[]) {
+    if (argc < 4) {
+        cout << "Usage: ./OS <RAM_MB> <HDD_GB> <Cores>" << endl;
+        return 1;
+    }
+    int ram  = atoi(argv[1]);
+    int hdd  = atoi(argv[2]);
+    int core = atoi(argv[3]);
+    if (initialize(ram, hdd, core) != 0) {
+        cout << "Invalid arguments — values must be positive" << endl;
+        return 1;
+    }
+
+    welcomeScreen();
+    pthread_t reaperTid;
+    pthread_create(&reaperTid, nullptr, reaperThread, nullptr);
+    pthread_detach(reaperTid);   
+
+    int choice;
+    do {
         system("clear");
         printStatus();
-        cout << "\n===== windows =====" << endl;
-        cout << "1.  Calculator         [RAM: " << CALC_RAM        << " MB]" << endl;
-        cout << "2.  Notepad            [RAM: " << NOTEPAD_RAM     << " MB]" << endl;
-        cout << "3.  Clock              [RAM: " << CLOCK_RAM       << " MB]" << endl;
-        cout << "4.  Calendar           [RAM: " << CALENDAR_RAM    << " MB]" << endl;
-        cout << "5.  File Copy          [RAM: " << FILE_COPY_RAM   << " MB]" << endl;
-        cout << "6.  File Move          [RAM: " << FILE_MOVE_RAM   << " MB]" << endl;
-        cout << "7.  File Delete        [RAM: " << FILE_DELETE_RAM << " MB]" << endl;
-        cout << "8.  File Create        [RAM: " << FILE_CREATE_RAM << " MB]" << endl;
-        cout << "9.  File Info          [RAM: " << FILE_INFO_RAM   << " MB]" << endl;
-        cout << "10. Random Number      [RAM: " << RAND_GEN_RAM    << " MB]" << endl;
-        cout << "11. Word Count         [RAM: " << WORD_COUNT_RAM  << " MB]" << endl;
-        cout << "12. Mine Sweeper       [RAM: " << MINESWEEPER_RAM << " MB]" << endl;
-        cout << "13. Music Sim          [RAM: " << MUSIC_SIM_RAM   << " MB]" << endl;
-        cout << "14. Print Sim          [RAM: " << PRINT_SIM_RAM   << " MB]" << endl;
-        cout << "15. RAM Viewer         [RAM: " << RAM_VIEWER_RAM  << " MB]" << endl;
-        cout << "16. Process Viewer     [RAM: " << PROC_VIEWER_RAM << " MB]" << endl;
-        cout << "17. Log Generator      [RAM: " << LOG_GEN_RAM     << " MB]" << endl;
-        cout << "18. Log Viewer         [RAM: " << LOG_VIEWER_RAM << " MB]" << endl;
-        cout << "19. Timer/Alarm        [RAM: " << TIMER_RAM       << " MB]" << endl;
+        cout << "\n===== Windows =====" << endl;
+        cout << "1.  Calculator         [RAM: " << CALC_RAM           << " MB]" << endl;
+        cout << "2.  Notepad            [RAM: " << NOTEPAD_RAM        << " MB]" << endl;
+        cout << "3.  Clock              [RAM: " << CLOCK_RAM          << " MB]" << endl;
+        cout << "4.  Calendar           [RAM: " << CALENDAR_RAM       << " MB]" << endl;
+        cout << "5.  File Copy          [RAM: " << FILE_COPY_RAM      << " MB]" << endl;
+        cout << "6.  File Move          [RAM: " << FILE_MOVE_RAM      << " MB]" << endl;
+        cout << "7.  File Delete        [RAM: " << FILE_DELETE_RAM    << " MB]" << endl;
+        cout << "8.  File Create        [RAM: " << FILE_CREATE_RAM    << " MB]" << endl;
+        cout << "9.  File Info          [RAM: " << FILE_INFO_RAM      << " MB]" << endl;
+        cout << "10. Random Number      [RAM: " << RAND_GEN_RAM       << " MB]" << endl;
+        cout << "11. Word Count         [RAM: " << WORD_COUNT_RAM     << " MB]" << endl;
+        cout << "12. Mine Sweeper       [RAM: " << MINESWEEPER_RAM    << " MB]" << endl;
+        cout << "13. Music Sim          [RAM: " << MUSIC_SIM_RAM      << " MB]" << endl;
+        cout << "14. Print Sim          [RAM: " << PRINT_SIM_RAM      << " MB]" << endl;
+        cout << "15. RAM Viewer         [RAM: " << RAM_VIEWER_RAM     << " MB]" << endl;
+        cout << "16. Process Viewer     [RAM: " << PROC_VIEWER_RAM    << " MB]" << endl;
+        cout << "17. Log Generator      [RAM: " << LOG_GEN_RAM        << " MB]" << endl;
+        cout << "18. Log Viewer         [RAM: " << LOG_VIEWER_RAM     << " MB]" << endl;
+        cout << "19. Timer/Alarm        [RAM: " << TIMER_RAM          << " MB]" << endl;
         cout << "20. Password Generator [RAM: " << PASSWORD_GENERATOR_RAM << " MB]" << endl;
         cout << "0.  Shutdown" << endl;
         cout << "\nSelect: ";
         cin >> choice;
 
-        switch(choice){
-            case 1:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=CALC_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/calculator", NULL);  
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "calculator", Running, CALC_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                }
-            }
-            break;
-            case 2:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=NOTEPAD_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/notepad", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "notepad", Running, NOTEPAD_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                }
-            }            
-            break;
-            case 3:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=CLOCK_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/clock", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "clock", Running, CLOCK_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                }
-            }
-            break;
-            case 4:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=CALENDAR_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/calender", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "calender", Running, CALENDAR_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                }
-            }
-            break;
-            case 5:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=FILE_COPY_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/fileCopy", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "fileCopy", Running, FILE_COPY_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                     
-                }
-            }
-            break;
-            case 6:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=FILE_MOVE_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/fileMove", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "fileMove", Running, FILE_MOVE_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                     
-                }
-            }  
-            break;
-            case 7:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=FILE_DELETE_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/fileDelete", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "fileDelete", Running, FILE_DELETE_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                     
-                }
-            }  
-            break;
-            case 8:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=FILE_CREATE_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/fileCreate", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "fileCreate", Running, FILE_CREATE_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                     
-                }
-            }  
-            break;
-            case 9:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=FILE_INFO_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/fileInfo", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "fileInfo", Running, FILE_INFO_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                     
-                }
-            }  
-            break;
-            case 10:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=RAND_GEN_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/randomNumGen", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "randomNumGen", Running, RAND_GEN_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                     
-                }
-            }  
-            break;
-            case 11:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=WORD_COUNT_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/wordCount", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "wordCount", Running, WORD_COUNT_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                     
-                }
-            }           
-            break;
-            case 12:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=MINESWEEPER_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/mineSweeper", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "mineSweeper", Running, MINESWEEPER_RAM);
-                        addProcess(pcb);
-                    }
-                }
-            } 
-            break;
-            case 13: {
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=MUSIC_SIM_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/musicSim", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "musicSim", Running, MUSIC_SIM_RAM);
-                        addProcess(pcb);
-                    }
-                }
-            }            
-            break;
-            case 14:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=PRINT_SIM_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/printSim", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "printSim", Running, PRINT_SIM_RAM);
-                        addProcess(pcb);
-                    }
-                         
-                }
-            } 
-            break;
-            case 15:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=RAM_VIEWER_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/ram_viewer",
-                        to_string(totalRam).c_str(),
-                        to_string(availableRam).c_str(),
-                        to_string(totalHardDisk).c_str(),
-                        to_string(availableHardDisk).c_str(),
-                        to_string(totalCores).c_str(),
-                        to_string(availableCores).c_str(),
-                        NULL);
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "ram_viewer", Running, RAM_VIEWER_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                }
-            }
-            break;
-            case 16:{
-                 int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=PROC_VIEWER_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/processViewer", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else { // GRANT
-                        msg = "GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "processViewer", Running, PROC_VIEWER_RAM);
-                        addProcess(pcb);
-                    }
-                    
-                     
-                }
-            }
-            break;
-            case 17:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=LOG_GEN_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/logGenerator", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "logGenerator", Running, LOG_GEN_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                     
-                }
-            } 
-            break;
-            case 18:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=LOG_VIEWER_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/logViewer", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "logViewer", Running, LOG_VIEWER_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                     
-                }
-            } 
-            break;
-            case 19:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=TIMER_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/timer", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "timer", Running, TIMER_RAM);
-                        addProcess(pcb);
-                    }
-                     
-                     
-                }
-            } 
-            break;
-            case 20:{
-                int p1fd[2];
-                int p2fd[2];
-                pipe(p1fd); //pipe1 : parent writes, child reads
-                pipe(p2fd); //pipe2 : child writes, parent reads
-                pid_t pid=fork();
-                if(pid==0){  //child
-                    int ram=PASSWORD_GENERATOR_RAM;
-                    close(p1fd[1]);
-                    close(p2fd[0]);
-
-                    string message="REQUEST "+to_string(ram);
-                    const char *msg=message.c_str();
-                    write(p2fd[1],msg,strlen(msg));
-
-                    char buffer[100];
-                    int n=read(p1fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", "tasks/passwordGenerator", NULL);    
-                        exit(0);
-                    }
-                    else if(strcmp(buffer,"DENY")==0){
-                        exit(1);
-                    }
-                }
-                else{   //parent
-                    close(p1fd[0]);
-                    close(p2fd[1]);
-
-                    char buffer[100];
-                    int n=read(p2fd[0],buffer,sizeof(buffer));
-                    buffer[n]='\0';
-
-                    string received(buffer);
-                    
-                    const char*permission;
-                    string msg;
-                    
-                    PCB* pcb = nullptr;
-                    int requestedRam=stoi(received.substr(8));
-                    if(allocateRam(requestedRam) != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        // no RAM was taken, nothing to free
-                    }
-                    else if(allocateCore() != 0){
-                        msg = "DENY";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));                        
-                        printStatus();
-                        freeRam(requestedRam);  // give RAM back since core failed
-                    }
-                    else {
-                        msg="GRANT";
-                        permission=msg.c_str();
-                        write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "passwordGenerator", Running, PASSWORD_GENERATOR_RAM);
-                        addProcess(pcb);
-                    }
-                }
-            }   
-            break;
-            case 0:
-                goodbye();
-                break;
+        switch (choice) {
+            case  1: launchTask("calculator", "tasks/calculator", CALC_RAM);    break;
+            case  2: launchTask("notepad", "tasks/notepad", NOTEPAD_RAM);    break;
+            case  3: launchTask("clock", "tasks/clock", CLOCK_RAM);    break;
+            case  4: launchTask("calender", "tasks/calender", CALENDAR_RAM);    break;
+            case  5: launchTask("fileCopy", "tasks/fileCopy", FILE_COPY_RAM);    break;
+            case  6: launchTask("fileMove", "tasks/fileMove", FILE_MOVE_RAM);    break;
+            case  7: launchTask("fileDelete", "tasks/fileDelete", FILE_DELETE_RAM);    break;
+            case  8: launchTask("fileCreate", "tasks/fileCreate", FILE_CREATE_RAM);    break;
+            case  9: launchTask("fileInfo", "tasks/fileInfo", FILE_INFO_RAM);    break;
+            case 10: launchTask("randomNumGen", "tasks/randomNumGen", RAND_GEN_RAM);    break;
+            case 11: launchTask("wordCount", "tasks/wordCount", WORD_COUNT_RAM);    break;
+            case 12: launchTask("minesweeper", "tasks/minesweeper", MINESWEEPER_RAM);    break;
+            case 13: launchTask("musicSim", "tasks/musicSim", MUSIC_SIM_RAM);    break;
+            case 14: launchTask("printSim", "tasks/printSim", PRINT_SIM_RAM);    break;
+            case 15: launchTask("ramViewer", "tasks/ramViewer", RAM_VIEWER_RAM);    break;
+            case 16: launchTask("procViewer", "tasks/procViewer", PROC_VIEWER_RAM);    break;
+            case 17: launchTask("logGenerator", "tasks/logGenerator", LOG_GEN_RAM);    break;
+            case 18: launchTask("logViewer", "tasks/logViewer", LOG_VIEWER_RAM);    break;
+            case 19: launchTask("timer", "tasks/timer", TIMER_RAM);    break;
+            case 20: launchTask("passwordGenerator","tasks/passwordGenerator", PASSWORD_GENERATOR_RAM); break;
+            case  0: goodbye(); break;
             default:
                 cout << "Invalid choice" << endl;
-                sleep(2);
+                sleep(1);
         }
-    }while(choice!=0);
+
+    } while (choice != 0);
+
+    osRunning = false;
+    sleep(2);
 
     return 0;
 }
+
 // a function copied from internet, it move the cursor at x, y cordinate on console
 void gotoxy(int x, int y) {
     cout << "\033[" << y << ";" << x << "H";
 }
-void goodbye(){
-    system("clear");
-    gotoxy(29, 12);
-    cout << "Shutting down" << endl;
-    sleep(1);
-    system("clear");
-}
-void welcomeScreen(){
+
+void welcomeScreen() {
     system("clear");
     gotoxy(29, 12);
     cout << "Welcome to the Windows" << endl;
+    sleep(1);
+    system("clear");
+}
+
+void goodbye() {
+    system("clear");
+    gotoxy(29, 12);
+    cout << "Shutting down..." << endl;
     sleep(1);
     system("clear");
 }

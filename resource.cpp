@@ -65,10 +65,18 @@ void freeCore(){
 }
 
 void printStatus(){
-    cout<<"Total Ram : "<<totalRam<<endl;
-    cout<<"Available Ram : "<<availableRam<<endl;
-    cout<<"Total HDD : "<<totalHardDisk<<endl;
-    cout<<"Availabe HDD : "<<availableHardDisk<<endl;
-    cout<<"Total Cores : "<<totalCores<<endl;
-    cout<<"Available Cores : "<<availableCores<<endl;
+    cout<<"Total Ram     : "<<totalRam<<" MB"<<endl;
+    cout<<"Available Ram : "<<availableRam<<" MB"<<endl;
+    cout<<"Total HDD     : "<<totalHardDisk<<" GB"<<endl;
+    cout<<"Available HDD : "<<availableHardDisk<<" GB"<<endl;
+    cout<<"Total Cores   : "<<totalCores<<endl;
+    cout<<"Available Cores: "<<availableCores<<endl;
+}
+
+void reprintStatusInPlace(){
+    cout << "\033[s"      // save cursor position
+         << "\033[0;0H"; // move to row 1, col 1
+    printStatus();
+    cout << "\033[u"; // restore cursor position
+    cout.flush();
 }

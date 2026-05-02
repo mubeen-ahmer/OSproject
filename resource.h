@@ -13,5 +13,6 @@ void freeHardDisk(int hdd);
 int allocateCore();
 void freeCore();
 void printStatus();
+void reprintStatusInPlace();
 
 #endif
