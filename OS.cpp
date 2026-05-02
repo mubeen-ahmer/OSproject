@@ -31,26 +31,26 @@ int main(int argc,char* argv[]){
         system("clear");
         printStatus();
         cout << "\n===== windows =====" << endl;
-        cout << "/1.  Calculator      [RAM: " << CALC_RAM        << " MB]" << endl;
-        cout << "/2.  Notepad         [RAM: " << NOTEPAD_RAM     << " MB]" << endl;
-        cout << "/3.  Clock           [RAM: " << CLOCK_RAM       << " MB]" << endl;
-        cout << "/4.  Calendar        [RAM: " << CALENDAR_RAM    << " MB]" << endl;
-        cout << "/5.  File Copy       [RAM: " << FILE_COPY_RAM   << " MB]" << endl;
-        cout << "/6.  File Move       [RAM: " << FILE_MOVE_RAM   << " MB]" << endl;
-        cout << "/7.  File Delete     [RAM: " << FILE_DELETE_RAM << " MB]" << endl;
-        cout << "/8.  File Create     [RAM: " << FILE_CREATE_RAM << " MB]" << endl;
-        cout << "/9.  File Info       [RAM: " << FILE_INFO_RAM   << " MB]" << endl;
-        cout << "10. File Editor     [RAM: " << FILE_EDITOR_RAM << " MB]" << endl;
-        cout << "11. Text Search     [RAM: " << TEXT_SEARCH_RAM << " MB]" << endl;
-        cout << "12. Minesweeper     [RAM: " << MINESWEEPER_RAM << " MB]" << endl;
-        cout << "/13. Music Sim       [RAM: " << MUSIC_SIM_RAM   << " MB]" << endl;
-        cout << "/14. Print Sim       [RAM: " << PRINT_SIM_RAM   << " MB]" << endl;
-        cout << "/15. RAM Viewer      [RAM: " << RAM_VIEWER_RAM  << " MB]" << endl;
-        cout << "16. Process Viewer  [RAM: " << PROC_VIEWER_RAM << " MB]" << endl;
-        cout << "/17. Log Generator   [RAM: " << LOG_GEN_RAM     << " MB]" << endl;
-        cout << "/18. Random Number   [RAM: " << RAND_GEN_RAM    << " MB]" << endl;
-        cout << "/19. Timer/Alarm     [RAM: " << TIMER_RAM       << " MB]" << endl;
-        cout << "20. Auto Backup     [RAM: " << AUTO_BACKUP_RAM << " MB]" << endl;
+        cout << "1.  Calculator         [RAM: " << CALC_RAM        << " MB]" << endl;
+        cout << "2.  Notepad            [RAM: " << NOTEPAD_RAM     << " MB]" << endl;
+        cout << "3.  Clock              [RAM: " << CLOCK_RAM       << " MB]" << endl;
+        cout << "4.  Calendar           [RAM: " << CALENDAR_RAM    << " MB]" << endl;
+        cout << "5.  File Copy          [RAM: " << FILE_COPY_RAM   << " MB]" << endl;
+        cout << "6.  File Move          [RAM: " << FILE_MOVE_RAM   << " MB]" << endl;
+        cout << "7.  File Delete        [RAM: " << FILE_DELETE_RAM << " MB]" << endl;
+        cout << "8.  File Create        [RAM: " << FILE_CREATE_RAM << " MB]" << endl;
+        cout << "9.  File Info          [RAM: " << FILE_INFO_RAM   << " MB]" << endl;
+        cout << "10. Random Number      [RAM: " << RAND_GEN_RAM    << " MB]" << endl;
+        cout << "11. Word Count         [RAM: " << WORD_COUNT_RAM  << " MB]" << endl;
+        cout << "12. Mine Sweeper       [RAM: " << MINESWEEPER_RAM << " MB]" << endl;
+        cout << "13. Music Sim          [RAM: " << MUSIC_SIM_RAM   << " MB]" << endl;
+        cout << "14. Print Sim          [RAM: " << PRINT_SIM_RAM   << " MB]" << endl;
+        cout << "15. RAM Viewer         [RAM: " << RAM_VIEWER_RAM  << " MB]" << endl;
+        cout << "16. Process Viewer     [RAM: " << PROC_VIEWER_RAM << " MB]" << endl;
+        cout << "17. Log Generator      [RAM: " << LOG_GEN_RAM     << " MB]" << endl;
+        cout << "18. Log Viewer         [RAM: " << LOG_VIEWER_RAM << " MB]" << endl;
+        cout << "19. Timer/Alarm        [RAM: " << TIMER_RAM       << " MB]" << endl;
+        cout << "20. Password Generator [RAM: " << PASSWORD_GENERATOR_RAM << " MB]" << endl;
         cout << "0.  Shutdown" << endl;
         cout << "\nSelect: ";
         cin >> choice;
@@ -728,9 +728,231 @@ int main(int argc,char* argv[]){
                 }
             }  
             break;
-            case 10: break;
-            case 11: break;
-            case 12: break;
+            case 10:{
+                int p1fd[2];
+                int p2fd[2];
+                pipe(p1fd); //pipe1 : parent writes, child reads
+                pipe(p2fd); //pipe2 : child writes, parent reads
+                pid_t pid=fork();
+                if(pid==0){  //child
+                    int ram=RAND_GEN_RAM;
+                    close(p1fd[1]);
+                    close(p2fd[0]);
+
+                    string message="REQUEST "+to_string(ram);
+                    const char *msg=message.c_str();
+                    write(p2fd[1],msg,strlen(msg));
+
+                    char buffer[100];
+                    int n=read(p1fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    if(strcmp(buffer,"GRANT")==0){
+                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/randomNumGen", NULL);    
+                        exit(0);
+                    }
+                    else if(strcmp(buffer,"DENY")==0){
+                        exit(1);
+                    }
+                }
+                else{   //parent
+                    close(p1fd[0]);
+                    close(p2fd[1]);
+
+                    char buffer[100];
+                    int n=read(p2fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    string received(buffer);
+                    
+                    const char*permission;
+                    string msg;
+                    
+                    PCB* pcb = nullptr;
+                    int requestedRam=stoi(received.substr(8));
+                    if(allocateRam(requestedRam) != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        // no RAM was taken, nothing to free
+                    }
+                    else if(allocateCore() != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        freeRam(requestedRam);  // give RAM back since core failed
+                    }
+                    else {
+                        msg="GRANT";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));
+                        pcb = new PCB(pid, getpid(), "randomNumGen", Running, RAND_GEN_RAM);
+                        addProcess(pcb);
+                    }
+                    sleep(4);
+                    int status;
+                    wait(&status);
+                    if(pcb != nullptr){
+                        removeProcess(pcb);
+                        freeRam(requestedRam);
+                        freeCore();
+                        delete pcb;
+                    }
+                }
+            }  
+            break;
+            case 11:{
+                int p1fd[2];
+                int p2fd[2];
+                pipe(p1fd); //pipe1 : parent writes, child reads
+                pipe(p2fd); //pipe2 : child writes, parent reads
+                pid_t pid=fork();
+                if(pid==0){  //child
+                    int ram=WORD_COUNT_RAM;
+                    close(p1fd[1]);
+                    close(p2fd[0]);
+
+                    string message="REQUEST "+to_string(ram);
+                    const char *msg=message.c_str();
+                    write(p2fd[1],msg,strlen(msg));
+
+                    char buffer[100];
+                    int n=read(p1fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    if(strcmp(buffer,"GRANT")==0){
+                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/wordCount", NULL);    
+                        exit(0);
+                    }
+                    else if(strcmp(buffer,"DENY")==0){
+                        exit(1);
+                    }
+                }
+                else{   //parent
+                    close(p1fd[0]);
+                    close(p2fd[1]);
+
+                    char buffer[100];
+                    int n=read(p2fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    string received(buffer);
+                    
+                    const char*permission;
+                    string msg;
+                    
+                    PCB* pcb = nullptr;
+                    int requestedRam=stoi(received.substr(8));
+                    if(allocateRam(requestedRam) != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        // no RAM was taken, nothing to free
+                    }
+                    else if(allocateCore() != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        freeRam(requestedRam);  // give RAM back since core failed
+                    }
+                    else {
+                        msg="GRANT";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));
+                        pcb = new PCB(pid, getpid(), "wordCount", Running, WORD_COUNT_RAM);
+                        addProcess(pcb);
+                    }
+                    sleep(4);
+                    int status;
+                    wait(&status);
+                    if(pcb != nullptr){
+                        removeProcess(pcb);
+                        freeRam(requestedRam);
+                        freeCore();
+                        delete pcb;
+                    }
+                }
+            }           
+            break;
+            case 12:{
+                int p1fd[2];
+                int p2fd[2];
+                pipe(p1fd); //pipe1 : parent writes, child reads
+                pipe(p2fd); //pipe2 : child writes, parent reads
+                pid_t pid=fork();
+                if(pid==0){  //child
+                    int ram=MINESWEEPER_RAM;
+                    close(p1fd[1]);
+                    close(p2fd[0]);
+
+                    string message="REQUEST "+to_string(ram);
+                    const char *msg=message.c_str();
+                    write(p2fd[1],msg,strlen(msg));
+
+                    char buffer[100];
+                    int n=read(p1fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    if(strcmp(buffer,"GRANT")==0){
+                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/mineSweeper", NULL);    
+                        exit(0);
+                    }
+                    else if(strcmp(buffer,"DENY")==0){
+                        exit(1);
+                    }
+                }
+                else{   //parent
+                    close(p1fd[0]);
+                    close(p2fd[1]);
+
+                    char buffer[100];
+                    int n=read(p2fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    string received(buffer);
+                    
+                    const char*permission;
+                    string msg;
+                    
+                    PCB* pcb = nullptr;
+                    int requestedRam=stoi(received.substr(8));
+                    if(allocateRam(requestedRam) != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        // no RAM was taken, nothing to free
+                    }
+                    else if(allocateCore() != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        freeRam(requestedRam);  // give RAM back since core failed
+                    }
+                    else {
+                        msg="GRANT";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));
+                        pcb = new PCB(pid, getpid(), "mineSweeper", Running, MINESWEEPER_RAM);
+                        addProcess(pcb);
+                    }
+                    sleep(4);
+                    int status;
+                    wait(&status);
+                    if(pcb != nullptr){
+                        removeProcess(pcb);
+                        freeRam(requestedRam);
+                        freeCore();
+                        delete pcb;
+                    }
+                }
+            } 
+            break;
             case 13: {
                 int p1fd[2];
                 int p2fd[2];
@@ -962,7 +1184,81 @@ int main(int argc,char* argv[]){
                 }
             }
             break;
-            case 16: break;
+            case 16:{
+                 int p1fd[2];
+                int p2fd[2];
+                pipe(p1fd); //pipe1 : parent writes, child reads
+                pipe(p2fd); //pipe2 : child writes, parent reads
+                pid_t pid=fork();
+                if(pid==0){  //child
+                    int ram=PROC_VIEWER_RAM;
+                    close(p1fd[1]);
+                    close(p2fd[0]);
+
+                    string message="REQUEST "+to_string(ram);
+                    const char *msg=message.c_str();
+                    write(p2fd[1],msg,strlen(msg));
+
+                    char buffer[100];
+                    int n=read(p1fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    if(strcmp(buffer,"GRANT")==0){
+                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/processViewer", NULL);    
+                        exit(0);
+                    }
+                    else if(strcmp(buffer,"DENY")==0){
+                        exit(1);
+                    }
+                }
+                else{   //parent
+                    close(p1fd[0]);
+                    close(p2fd[1]);
+
+                    char buffer[100];
+                    int n=read(p2fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    string received(buffer);
+                    
+                    const char*permission;
+                    string msg;
+                    
+                    PCB* pcb = nullptr;
+                    int requestedRam=stoi(received.substr(8));
+                    if(allocateRam(requestedRam) != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        // no RAM was taken, nothing to free
+                    }
+                    else if(allocateCore() != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        freeRam(requestedRam);  // give RAM back since core failed
+                    }
+                    else { // GRANT
+                        msg = "GRANT";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));
+                        pcb = new PCB(pid, getpid(), "processViewer", Running, PROC_VIEWER_RAM);
+                        addProcess(pcb);
+                    }
+                    sleep(4); // wait for the process to finish
+                    int status;
+                    wait(&status);
+                    if(pcb != nullptr){
+                        removeProcess(pcb);
+                        freeRam(requestedRam);
+                        freeCore();
+                        delete pcb;
+                    }
+                }
+            }
+            break;
             case 17:{
                 int p1fd[2];
                 int p2fd[2];
@@ -1045,7 +1341,7 @@ int main(int argc,char* argv[]){
                 pipe(p2fd); //pipe2 : child writes, parent reads
                 pid_t pid=fork();
                 if(pid==0){  //child
-                    int ram=RAND_GEN_RAM;
+                    int ram=LOG_VIEWER_RAM;
                     close(p1fd[1]);
                     close(p2fd[0]);
 
@@ -1058,7 +1354,7 @@ int main(int argc,char* argv[]){
                     buffer[n]='\0';
 
                     if(strcmp(buffer,"GRANT")==0){
-                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/randomNumGen", NULL);    
+                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/logViewer", NULL);    
                         exit(0);
                     }
                     else if(strcmp(buffer,"DENY")==0){
@@ -1098,7 +1394,7 @@ int main(int argc,char* argv[]){
                         msg="GRANT";
                         permission=msg.c_str();
                         write(p1fd[1],permission,strlen(permission));
-                        pcb = new PCB(pid, getpid(), "randomNumGen", Running, RAND_GEN_RAM);
+                        pcb = new PCB(pid, getpid(), "logViewer", Running, LOG_VIEWER_RAM);
                         addProcess(pcb);
                     }
                     sleep(4);
@@ -1111,7 +1407,7 @@ int main(int argc,char* argv[]){
                         delete pcb;
                     }
                 }
-            }  
+            } 
             break;
             case 19:{
                 int p1fd[2];
@@ -1188,7 +1484,81 @@ int main(int argc,char* argv[]){
                 }
             } 
             break;
-            case 20: break;
+            case 20:{
+                int p1fd[2];
+                int p2fd[2];
+                pipe(p1fd); //pipe1 : parent writes, child reads
+                pipe(p2fd); //pipe2 : child writes, parent reads
+                pid_t pid=fork();
+                if(pid==0){  //child
+                    int ram=PASSWORD_GENERATOR_RAM;
+                    close(p1fd[1]);
+                    close(p2fd[0]);
+
+                    string message="REQUEST "+to_string(ram);
+                    const char *msg=message.c_str();
+                    write(p2fd[1],msg,strlen(msg));
+
+                    char buffer[100];
+                    int n=read(p1fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    if(strcmp(buffer,"GRANT")==0){
+                        execlp("xterm", "xterm", "-e", "/home/mubeen-ahmer/OS/tasks/passwordGenerator", NULL);    
+                        exit(0);
+                    }
+                    else if(strcmp(buffer,"DENY")==0){
+                        exit(1);
+                    }
+                }
+                else{   //parent
+                    close(p1fd[0]);
+                    close(p2fd[1]);
+
+                    char buffer[100];
+                    int n=read(p2fd[0],buffer,sizeof(buffer));
+                    buffer[n]='\0';
+
+                    string received(buffer);
+                    
+                    const char*permission;
+                    string msg;
+                    
+                    PCB* pcb = nullptr;
+                    int requestedRam=stoi(received.substr(8));
+                    if(allocateRam(requestedRam) != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        // no RAM was taken, nothing to free
+                    }
+                    else if(allocateCore() != 0){
+                        msg = "DENY";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));                        
+                        printStatus();
+                        freeRam(requestedRam);  // give RAM back since core failed
+                    }
+                    else {
+                        msg="GRANT";
+                        permission=msg.c_str();
+                        write(p1fd[1],permission,strlen(permission));
+                        pcb = new PCB(pid, getpid(), "passwordGenerator", Running, PASSWORD_GENERATOR_RAM);
+                        addProcess(pcb);
+                    }
+                    sleep(4);
+                    int status;
+                    wait(&status);
+                    if(pcb != nullptr){
+                        removeProcess(pcb);
+                        freeRam(requestedRam);
+                        freeCore();
+                        delete pcb;
+                    }
+                }
+            }   
+            break;
             case 0:
                 goodbye();
                 break;
