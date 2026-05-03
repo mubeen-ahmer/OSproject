@@ -17,7 +17,7 @@ extern pthread_mutex_t gSchedMutex;
 extern pthread_cond_t  gQueueCond;
 extern sem_t           gTaskSemaphore;
 
-#define RR_QUANTUM_SEC 3   // Round-Robin time slice in seconds
+#define RR_QUANTUM_SEC 0.2   // Round-Robin time slice in seconds
 
 void  initScheduler(int cores);   // call once at boot with core count
 void  scheduleProcess(PCB* pcb);  // hand a newly granted PCB to the scheduler

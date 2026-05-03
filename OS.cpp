@@ -60,6 +60,7 @@ void launchTask(const char* name, const char* execPath, int ramAmount, TASK_LEVE
 
         if (strcmp(buffer, "GRANT") == 0) {
             execlp("xterm", "xterm", "-fa", "Monospace", "-fs", "11", "-e", execPath, NULL);
+            // execlp("xterm", "xterm", "-e", execPath, NULL);
             perror("execlp: xterm failed"); // only reached if execlp fails
         }
         exit(1);
@@ -92,24 +93,15 @@ void launchTask(const char* name, const char* execPath, int ramAmount, TASK_LEVE
             cin.ignore();
             cin.get();
         }
-        else if (allocateCore() != 0) {
-            msg = "DENY";
-            permission = msg.c_str();
-            write(p1fd[1], permission, strlen(permission));
-            close(p1fd[1]); 
-            printStatus();
-            freeRam(requestedRam);
-            cin.ignore();
-            cin.get();
-        }
         else {
             msg = "GRANT";
             permission = msg.c_str();
             write(p1fd[1], permission, strlen(permission));
             close(p1fd[1]); 
-            pcb = new PCB(pid, getpid(), name, Running, ramAmount, 0, level, priority);
+            pcb = new PCB(pid, getpid(), name, Ready, ramAmount, 0, level, priority);
             addProcess(pcb);
-            scheduleProcess(pcb); // hand to scheduler queue
+            kill(pid, SIGSTOP);   // Pause immediately! It must wait for a Core.
+            scheduleProcess(pcb); // Hand to scheduler queue
         }
 
         pthread_mutex_unlock(&gMutex); // FIX: unlock after done
@@ -133,39 +125,52 @@ int main(int argc, char* argv[]) {
 
     // Start background threads
     initScheduler(core);
-    pthread_t reaperTid, schedTid;
-    pthread_create(&reaperTid, nullptr, reaperThread,    nullptr);
-    pthread_create(&schedTid,  nullptr, schedulerThread, nullptr);
+    pthread_t reaperTid;
+    pthread_create(&reaperTid, nullptr, reaperThread, nullptr);
     pthread_detach(reaperTid);
-    pthread_detach(schedTid);   
+    
+    // Spin up exactly as many Scheduler Threads as we have CPU Cores!
+    pthread_t schedTid[core];
+    for (int i = 0; i < core; i++) {
+        pthread_create(&schedTid[i], nullptr, schedulerThread, nullptr);
+        pthread_detach(schedTid[i]);
+    }   
 
     int choice;
     do {
         system("clear");
         printStatus();
         cout << "\n===== NexusOS =====" << endl;
-        cout << "1.  Calculator         [RAM: " << CALC_RAM           << " MB]" << endl;
-        cout << "2.  Notepad            [RAM: " << NOTEPAD_RAM        << " MB]" << endl;
-        cout << "3.  Clock              [RAM: " << CLOCK_RAM          << " MB]" << endl;
-        cout << "4.  Calendar           [RAM: " << CALENDAR_RAM       << " MB]" << endl;
-        cout << "5.  File Copy          [RAM: " << FILE_COPY_RAM      << " MB]" << endl;
-        cout << "6.  File Move          [RAM: " << FILE_MOVE_RAM      << " MB]" << endl;
-        cout << "7.  File Delete        [RAM: " << FILE_DELETE_RAM    << " MB]" << endl;
-        cout << "8.  File Create        [RAM: " << FILE_CREATE_RAM    << " MB]" << endl;
-        cout << "9.  File Info          [RAM: " << FILE_INFO_RAM      << " MB]" << endl;
-        cout << "10. Random Number      [RAM: " << RAND_GEN_RAM       << " MB]" << endl;
+        cout << "\n[Level 0: FOREGROUND - Round Robin]" << endl;
+        cout << " 1. Calculator         [RAM: " << CALC_RAM           << " MB]" << endl;
+        cout << " 2. Notepad            [RAM: " << NOTEPAD_RAM        << " MB]" << endl;
         cout << "11. Word Count         [RAM: " << WORD_COUNT_RAM     << " MB]" << endl;
         cout << "12. Mine Sweeper       [RAM: " << MINESWEEPER_RAM    << " MB]" << endl;
+
+        cout << "\n[Level 1: BACKGROUND - FCFS]" << endl;
         cout << "13. Music Sim          [RAM: " << MUSIC_SIM_RAM      << " MB]" << endl;
         cout << "14. Print Sim          [RAM: " << PRINT_SIM_RAM      << " MB]" << endl;
-        cout << "15. RAM Viewer         [RAM: " << RAM_VIEWER_RAM     << " MB]" << endl;
-        cout << "16. Process Viewer     [RAM: " << PROC_VIEWER_RAM    << " MB]" << endl;
-        cout << "17. Log Generator      [RAM: " << LOG_GEN_RAM        << " MB]" << endl;
-        cout << "18. Log Viewer         [RAM: " << LOG_VIEWER_RAM     << " MB]" << endl;
-        cout << "19. Timer/Alarm        [RAM: " << TIMER_RAM          << " MB]" << endl;
-        cout << "20. Password Generator [RAM: " << PASSWORD_GENERATOR_RAM << " MB]" << endl;
-        cout << "21. [KERNEL MODE]" << endl;
-        cout << "0.  Shutdown" << endl;
+        cout << " 5. File Copy          [RAM: " << FILE_COPY_RAM      << " MB]" << endl;
+        cout << " 6. File Move          [RAM: " << FILE_MOVE_RAM      << " MB]" << endl;
+        cout << " 7. File Delete        [RAM: " << FILE_DELETE_RAM    << " MB]" << endl;
+
+        cout << "\n[Level 2: SYSTEM - Priority]" << endl;
+        cout << " 3. Clock              [Pri:1 | RAM: " << CLOCK_RAM          << " MB]" << endl;
+        cout << " 4. Calendar           [Pri:1 | RAM: " << CALENDAR_RAM       << " MB]" << endl;
+        cout << "15. RAM Viewer         [Pri:1 | RAM: " << RAM_VIEWER_RAM     << " MB]" << endl;
+        cout << "16. Process Viewer     [Pri:1 | RAM: " << PROC_VIEWER_RAM    << " MB]" << endl;
+        cout << " 8. File Create        [Pri:2 | RAM: " << FILE_CREATE_RAM    << " MB]" << endl;
+        cout << " 9. File Info          [Pri:2 | RAM: " << FILE_INFO_RAM      << " MB]" << endl;
+        cout << "19. Timer/Alarm        [Pri:2 | RAM: " << TIMER_RAM          << " MB]" << endl;
+        cout << "10. Random Number      [Pri:3 | RAM: " << RAND_GEN_RAM       << " MB]" << endl;
+        cout << "17. Log Generator      [Pri:3 | RAM: " << LOG_GEN_RAM        << " MB]" << endl;
+        cout << "18. Log Viewer         [Pri:3 | RAM: " << LOG_VIEWER_RAM     << " MB]" << endl;
+        cout << "20. Password Generator [Pri:3 | RAM: " << PASSWORD_GENERATOR_RAM << " MB]" << endl;
+
+        cout << "\n[ADMIN]" << endl;
+        cout << "21. *** KERNEL MODE ***" << endl;
+        cout << " 0. Shutdown" << endl;
+        
         cout << "\nSelect: ";
         cin >> choice;
 
@@ -176,23 +181,23 @@ int main(int argc, char* argv[]) {
             case 11: launchTask("wordCount",    "tasks/wordCount",    WORD_COUNT_RAM,FOREGROUND); break;
             case 12: launchTask("minesweeper",  "tasks/minesweeper",  MINESWEEPER_RAM,FOREGROUND); break;
             // Background/Auto-finish — Level 1, FCFS
+            case 13: launchTask("musicSim",     "tasks/musicSim",     MUSIC_SIM_RAM, BACKGROUND); break;
+            case 14: launchTask("printSim",     "tasks/printSim",     PRINT_SIM_RAM, BACKGROUND); break;
             case  5: launchTask("fileCopy",     "tasks/fileCopy",     FILE_COPY_RAM, BACKGROUND); break;
             case  6: launchTask("fileMove",     "tasks/fileMove",     FILE_MOVE_RAM, BACKGROUND); break;
             case  7: launchTask("fileDelete",   "tasks/fileDelete",   FILE_DELETE_RAM,BACKGROUND); break;
-            case 10: launchTask("randomNumGen", "tasks/randomNumGen", RAND_GEN_RAM,  BACKGROUND); break;
-            case 13: launchTask("musicSim",     "tasks/musicSim",     MUSIC_SIM_RAM, BACKGROUND); break;
-            case 14: launchTask("printSim",     "tasks/printSim",     PRINT_SIM_RAM, BACKGROUND); break;
-            case 17: launchTask("logGenerator", "tasks/logGenerator", LOG_GEN_RAM,   BACKGROUND); break;
-            case 20: launchTask("passwordGenerator","tasks/passwordGenerator",PASSWORD_GENERATOR_RAM,BACKGROUND); break;
             // System/Utility — Level 2, Priority (lower number = runs first)
             case  3: launchTask("clock",        "tasks/clock",        CLOCK_RAM,     SYSTEM, 1); break;
-            case  4: launchTask("calender",     "tasks/calender",     CALENDAR_RAM,  SYSTEM, 2); break;
-            case  8: launchTask("fileCreate",   "tasks/fileCreate",   FILE_CREATE_RAM,SYSTEM,3); break;
-            case  9: launchTask("fileInfo",     "tasks/fileInfo",     FILE_INFO_RAM,  SYSTEM,3); break;
+            case  4: launchTask("calender",     "tasks/calender",     CALENDAR_RAM,  SYSTEM, 1); break;
             case 15: launchTask("ramViewer",    "tasks/ramViewer",    RAM_VIEWER_RAM, SYSTEM,1); break;
             case 16: launchTask("procViewer",   "tasks/procViewer",   PROC_VIEWER_RAM,SYSTEM,1); break;
-            case 18: launchTask("logViewer",    "tasks/logViewer",    LOG_VIEWER_RAM, SYSTEM,2); break;
+            case  8: launchTask("fileCreate",   "tasks/fileCreate",   FILE_CREATE_RAM,SYSTEM,2); break;
+            case  9: launchTask("fileInfo",     "tasks/fileInfo",     FILE_INFO_RAM,  SYSTEM,2); break;
             case 19: launchTask("timer",        "tasks/timer",        TIMER_RAM,      SYSTEM,2); break;
+            case 10: launchTask("randomNumGen", "tasks/randomNumGen", RAND_GEN_RAM,   SYSTEM,3); break;
+            case 17: launchTask("logGenerator", "tasks/logGenerator", LOG_GEN_RAM,    SYSTEM,3); break;
+            case 18: launchTask("logViewer",    "tasks/logViewer",    LOG_VIEWER_RAM, SYSTEM,3); break;
+            case 20: launchTask("passwordGenerator","tasks/passwordGenerator",PASSWORD_GENERATOR_RAM,SYSTEM,3); break;
             // Kernel Mode
             case 21: kernelModeMenu(); break;
             case  0: goodbye(); break;
@@ -216,11 +221,12 @@ void kernelModeMenu() {
     int kChoice;
     do {
         system("clear");
+        gotoxy(0,10);
         cout << "╔══════════════════════════════╗" << endl;
         cout << "║       *** KERNEL MODE ***    ║" << endl;
         cout << "╚══════════════════════════════╝" << endl;
         pthread_mutex_lock(&gMutex);
-        printStatus();
+        // printStatus();
         pthread_mutex_unlock(&gMutex);
         cout << endl;
         cout << "1. List all processes"    << endl;
@@ -237,6 +243,7 @@ void kernelModeMenu() {
             case 1:
                 system("clear");
                 pthread_mutex_lock(&gMutex);
+                gotoxy(0,10);
                 listProcess();
                 pthread_mutex_unlock(&gMutex);
                 cout << "\nPress ENTER to continue...";
@@ -307,7 +314,7 @@ void welcomeScreen() {
         usleep(50000); // 50ms delay per block (1.5 seconds total)
     }
     cout << "] 100%\n" << endl;
-    usleep(500000); // half second pause before menu
+    usleep(1000000); // half second pause before menu
     system("clear");
 }
 

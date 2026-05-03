@@ -4,6 +4,7 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include "scheduler.h"
+#include "resource.h"
 #include "ready_queue.h"
 #include "kernel.h"
 #include "process.h"
@@ -63,41 +64,68 @@ void* schedulerThread(void* arg) {
 
         if (!pcb) continue;
 
-        // ── Context switch IN: resume the selected process ────────────────────
+        // ── Check if it was manually Blocked while in the queue ───────────────
         pthread_mutex_lock(&gMutex);
+        if (pcb->state == Blocked) {
+            pthread_mutex_unlock(&gMutex);
+            continue; // Drop it, don't run it
+        }
+
+        // ── Context switch IN: resume the selected process ────────────────────
+        allocateCore(); // This core is now BUSY
         pcb->state = Running;
+        reprintStatusInPlace();
         pthread_mutex_unlock(&gMutex);
 
         kill(pcb->pid, SIGCONT); // resume if it was stopped
 
         if (pcb->taskLevel == FOREGROUND) {
             // ── Round Robin: run for one quantum then preempt ─────────────────
-            sleep(RR_QUANTUM_SEC);
-
-            // Check if the process is still alive before stopping it
-            if (kill(pcb->pid, 0) == 0) {
-                // Context switch OUT: pause the process
-                kill(pcb->pid, SIGSTOP);
-
-                pthread_mutex_lock(&gMutex);
-                pcb->state = Ready;
-                pthread_mutex_unlock(&gMutex);
-
-                // Re-enqueue for next round (RR rotation)
-                pthread_mutex_lock(&gSchedMutex);
-                addToQueue(pcb);
-                pthread_mutex_unlock(&gSchedMutex);
-
-                sem_post(&gTaskSemaphore); // keep the semaphore count accurate
+            bool died = false;
+            for (int i = 0; i < (RR_QUANTUM_SEC * 10); i++) {
+                if (kill(pcb->pid, 0) != 0) { 
+                    died = true; 
+                    break; 
+                }
+                if (pcb->state == Blocked) {
+                    died = true; // treat as died so it doesn't re-enqueue
+                    break;
+                }
+                usleep(100000); // 0.1s
             }
-            // If process died during quantum, reaper thread handles cleanup
+
+            if (!died) {
+                // Context switch OUT: pause the process
+                pthread_mutex_lock(&gMutex);
+                if (pcb->state != Blocked) {
+                    kill(pcb->pid, SIGSTOP);
+                    pcb->state = Ready;
+                    pthread_mutex_unlock(&gMutex);
+
+                    // Re-enqueue for next round (RR rotation)
+                    pthread_mutex_lock(&gSchedMutex);
+                    addToQueue(pcb);
+                    pthread_mutex_unlock(&gSchedMutex);
+
+                    sem_post(&gTaskSemaphore); // keep the semaphore count accurate
+                } else {
+                    pthread_mutex_unlock(&gMutex);
+                }
+            }
 
         } else {
             // ── FCFS (Level 1) and Priority (Level 2): run to completion ─────
-            // These levels are non-preemptive — just mark Running, let reaper
-            // handle cleanup when they naturally finish.
-            // No re-enqueue needed.
+            while (kill(pcb->pid, 0) == 0) {
+                if (pcb->state == Blocked) break;
+                usleep(500000); // Check every 0.5s if it finished
+            }
         }
+
+        // ── Free Core: Task is either paused (RR) or dead ─────────────────────
+        pthread_mutex_lock(&gMutex);
+        freeCore(); // Core is available for the next iteration
+        reprintStatusInPlace();
+        pthread_mutex_unlock(&gMutex);
     }
     return nullptr;
 }

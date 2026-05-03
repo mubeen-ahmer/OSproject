@@ -5,6 +5,7 @@
 #include "resource.h"
 #include "process.h"
 #include "kernel.h"
+#include "scheduler.h"
 using namespace std;
 
 // ─── Global mutex ────────────────────────────────────────────────────────────
@@ -36,8 +37,8 @@ void removeProcess(PCB* pcb) {
         if (temp->pcb->pid == pcb->pid) {
             if (!prev) head = temp->next;
             else       prev->next = temp->next;
-            delete temp->pcb;  // free the PCB object
-            delete temp;       // free the node
+            delete temp->pcb;  
+            delete temp;      
             return;
         }
         prev = temp;
@@ -64,7 +65,6 @@ void listProcess() {
     }
 }
 
-// ─── Process control (Kernel Mode) ───────────────────────────────────────────
 
 void killProcess(int pid) {
     PCBNode* temp = head;
@@ -98,9 +98,13 @@ void resumeProcess(int pid) {
     PCBNode* temp = head;
     while (temp) {
         if (temp->pcb->pid == pid) {
-            kill(pid, SIGCONT);
-            temp->pcb->state = Running;
-            cout << "Process " << pid << " resumed." << endl;
+            if (temp->pcb->state == Blocked) {
+                temp->pcb->state = Ready;
+                cout << "Process " << pid << " resumed (Moved to Ready Queue)." << endl;
+                scheduleProcess(temp->pcb); // Let the scheduler handle the SIGCONT when it's picked up
+            } else {
+                cout << "Process " << pid << " is not blocked." << endl;
+            }
             return;
         }
         temp = temp->next;
@@ -113,13 +117,13 @@ void killAllProcesses() {
     while (temp) {
         kill(temp->pcb->pid, SIGKILL);
         freeRam(temp->pcb->requiredRAM);
-        freeCore();
         PCBNode* next = temp->next;
         delete temp->pcb;
         delete temp;
         temp = next;
     }
     head = nullptr;
+    availableCores = totalCores;
     cout << "All processes terminated. Resources freed." << endl;
 }
 
@@ -155,7 +159,6 @@ void checkAndCleanProcesses() {
             if (temp->pcb->pid == dead) {
                 // This was a running (granted) process — free its resources
                 freeRam(temp->pcb->requiredRAM);
-                freeCore();
                 removeProcess(temp->pcb);
                 reprintStatusInPlace(); // update the header in-place instantly
                 break;

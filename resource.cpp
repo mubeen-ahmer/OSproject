@@ -52,7 +52,6 @@ void freeHardDisk(int hdd){
 
 int allocateCore(){
     if(availableCores <= 0){
-        cout<<"No cores available"<<endl;
         return 1;
     }
     availableCores--;
@@ -74,9 +73,9 @@ void printStatus(){
 }
 
 void reprintStatusInPlace(){
-    cout << "\033[s"      // save cursor position
-         << "\033[0;0H"; // move to row 1, col 1
+    cout << "\033[s"      
+         << "\033[0;0H"; 
     printStatus();
-    cout << "\033[u"; // restore cursor position
+    cout << "\033[u"; 
     cout.flush();
 }

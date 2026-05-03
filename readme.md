@@ -5,146 +5,10 @@
 A terminal-based Operating System Simulator in C/C++ that mimics real OS behavior.
 Each task is a **separate compiled executable** launched via `fork` + `exec` — no simple function calls allowed.
 
----
-
-## File Structure
-
-```
-OS/
-├── os.c                    # Main OS — boot, menu, resource manager, scheduler
-├── process.h               # PCB struct, shared definitions
-├── resource_manager.c/.h   # RAM/HDD/core tracking
-├── kernel.c/.h             # Kernel mode, process table
-├── ready_queue.c/.h        # Ready queue + scheduling (RR + multilevel)
-├── scheduler.c/.h          # Context switching, state transitions
-│
-└── tasks/
-    ├── calculator.c
-    ├── notepad.c
-    ├── clock.c
-    ├── calendar.c
-    ├── file_copy.c
-    ├── file_move.c
-    ├── file_delete.c
-    ├── file_create.c
-    ├── file_info.c
-    ├── file_editor.c
-    ├── text_search.c
-    ├── minesweeper.c
-    ├── music_sim.c
-    ├── print_sim.c
-    ├── ram_viewer.c
-    ├── process_viewer.c
-    ├── log_gen.c
-    ├── rand_gen.c
-    ├── timer_alarm.c
-    └── auto_backup.c
-```
 
 Each task compiles to its own binary inside `tasks/`. The main OS execs these binaries as child processes.
 
----
 
-## Build Order
-
-### Phase 1 — Foundation (start here, nothing else works without it)
-
-1. **`process.h`** — Define the PCB struct used everywhere:
-
-```c
-typedef struct {
-    int pid;
-    char name[64];
-    int state;          // READY, RUNNING, BLOCKED, TERMINATED
-    int ram_required;   // MB
-    int hdd_required;   // MB
-    int priority;
-    int burst_time;
-} PCB;
-```
-
-2. **`resource_manager.c`** — Track total/available RAM, HDD, cores.
-   - Functions: `allocate_ram()`, `free_ram()`, `allocate_core()`, `free_core()`
-
-3. **`os.c` boot sequence** — Parse `./OS 2 256 8` args, display OS name with `sleep()`, show task menu.
-
----
-
-### Phase 2 — Process Creation and IPC
-
-4. **Process launch via `fork` + `exec`** inside `os.c`:
-   - Parent (OS) forks
-   - Child execs the task binary (e.g., `./tasks/calculator`)
-   - Use a **pipe** so the child can send its RAM/HDD requirements back to the OS
-   - OS checks resources → sends `GRANT` or kills the child
-
-5. **Each task opens in a new terminal** using:
-
-```c
-execlp("xterm", "xterm", "-e", "./tasks/calculator", NULL);
-```
-
----
-
-### Phase 3 — Scheduling
-
-6. **`ready_queue.c`** — Linked list or array of PCBs
-7. **Round Robin scheduler** — time quantum, cycle through ready queue
-8. **Multilevel queue** — Level 0: Round Robin, Level 1: FCFS, Level 2: Priority (or your choice per level)
-9. **Synchronization** — mutex around shared resource access (RAM table, ready queue)
-   - Mutex/Lock
-   - Semaphore
-   - Condition variables
-
----
-
-### Phase 4 — Tasks (build 5 at a time)
-
-Start with the simplest and work up:
-
-| Order | Tasks |
-|---|---|
-| First | Clock, Calendar, RAM viewer (auto-run, no user input needed) |
-| Second | Calculator, Notepad with autosave (user interaction) |
-| Third | File copy, File move, File delete, File info (background tasks) |
-| Last | Minesweeper, Timer/alarm, Music sim, Print sim, Auto-backup |
-
-**Template every task must follow:**
-
-```c
-// example: calculator.c
-#include <stdio.h>
-#include <string.h>
-
-#define RAM_REQUIRED  10   // MB
-#define HDD_REQUIRED   0   // MB
-
-int main() {
-    // 1. Report resource needs to parent OS via stdout pipe
-    printf("RESOURCE_REQUEST %d %d\n", RAM_REQUIRED, HDD_REQUIRED);
-    fflush(stdout);
-
-    // 2. Wait for grant signal from OS
-    char response[16];
-    scanf("%s", response);
-    if (strcmp(response, "GRANT") != 0) return 1;
-
-    // 3. Actual task logic here
-    // ...
-
-    return 0;
-}
-```
-
----
-
-### Phase 5 — Kernel Mode and Polish
-
-- Kernel mode menu: list all running processes, kill by PID
-- Minimize (send `SIGSTOP`) / Close (send `SIGKILL`) per process
-- Shutdown: kill all child processes, free all resources, display goodbye message
-
----
 
 ## Compilation
 
@@ -164,110 +28,9 @@ gcc os.c resource_manager.c kernel.c ready_queue.c scheduler.c -o OS -lpthread
 
 Or write a `Makefile` to compile everything at once.
 
----
 
-## Member Responsibilities
 
-| Member | Owns | Start With |
-|---|---|---|
-| Member 1 | Core OS, Resource Management, Boot, PCB, User/Kernel mode | `process.h` → `resource_manager.c` → boot in `os.c` |
-| Member 2 | Ready Queue, Scheduling (RR + Multilevel), Context Switching, Synchronization | `ready_queue.c` → `scheduler.c` (use dummy PCBs to test independently) |
-| Member 3 | All 20+ task programs, each as independent process with close/minimize | Start with: clock, calendar, calculator, file_copy, ram_viewer |
 
-**Integration (all 3 together):**
-- Connect task creation to resource manager
-- Pass new processes to the ready queue
-- Link scheduler with execution
-- Implement interrupt handling (close/minimize signals)
-- Final testing and debugging
-
----
-
-## OS Concepts Covered
-
-- Multitasking
-- Context switching
-- Resource allocation (RAM, HDD, CPU cores)
-- User mode and Kernel mode
-- Process creation (`fork` + `exec`)
-- Threads (`pthreads`)
-- EXEC commands
-- Scheduling with mutual exclusion, semaphore, and condition variables
-- Multilevel queue scheduling (different algorithm per level)
-
----
-
-## Bonus
-
-Implementing with a graphics library (e.g., `ncurses` for terminal UI, or a full GUI) earns bonus marks.
-
----
-
-## Architecture Deep Dive
-
-### How the OS starts
-
-```
-./OS 2 256 8
-```
-
-Standard C++ main — **not** `main(int ram, int hard, int core)`. Always use:
-
-```cpp
-int main(int argc, char* argv[]) {
-    int ram   = atoi(argv[1]);
-    int hdd   = atoi(argv[2]);
-    int cores = atoi(argv[3]);
-}
-```
-
----
-
-### How a task launches (full flow)
-
-```
-OS (parent)                          Task (child)
-    |                                     |
-    |-- fork() -------------------------->|
-    |                                     |-- sends "REQUEST 10 0\n" via pipe
-    |<-- reads pipe ----------------------|
-    |-- checks resource_manager           |
-    |   if OK:  sends "GRANT"            |
-    |   if not: sends "DENY" + kills     |
-    |                                     |-- receives GRANT → runs task logic
-    |-- creates PCB, adds to queue        |
-    |-- xterm opens for that child        |
-```
-
-Key point: **PCB is created after GRANT, not before.** The task sends its RAM/HDD requirements via pipe → OS reads them → checks availability → if granted, OS creates the PCB and stores those values in it.
-
----
-
-### Who owns what data
-
-| File | Owns |
-|---|---|
-| `process.h` | PCB struct, State enum |
-| `resource.cpp` | total/available RAM, HDD, cores — global to the OS |
-| `kernel.cpp` | process table (array of all PCBs), user/kernel mode switch |
-| `ready_queue.cpp` | queue of PCBs waiting for CPU |
-| `scheduler.cpp` | Round Robin + Multilevel logic, runs in a thread |
-| `os.cpp` | `main()`, boot, menu, fork/exec, ties everything together |
-| `tasks/*.cpp` | 20 independent executables |
-
----
-
-### Exact build sequence
-
-```
-1. process.h           — PCB struct, State enum
-2. resource.cpp        — hardware tracking (RAM/HDD/cores)
-3. os.cpp skeleton     — boot screen, parse args, call resource init, menu shell
-4. kernel.cpp          — process table, fork/exec one task to test pipe
-5. ready_queue.cpp     — queue of PCBs
-6. scheduler.cpp       — Round Robin + Multilevel scheduling in a thread
-7. tasks/*.cpp         — 20 task executables, one at a time
-```
 
 ## TASK CREATION
 
@@ -290,35 +53,89 @@ OS.cpp (parent)                    child process
       |-- shows "Not enough resources"   |
 ```
 
-# Task Classification
+
+## -----------------------------------------------------
+### Must read 
+### ----------------------------------------------------
 ```
-Type 1 — Foreground (Interactive)
-User must interact constantly. Goes BLOCKED when waiting for input.
+level 0 tasks : lets say we have one core and we open multiple tasks all will be opened and each will get cpu for a specific time 
+mean the context switching will happen
 
-Calculator
-Notepad
-File Editor
-Text Search
-Minesweeper
-Type 2 — Background (Auto-finish)
-Runs on its own, finishes automatically, no user input.
 
-File Copy
-File Move
-File Delete
-Print Simulation
-Music Simulation
-Auto Backup
-Log Generator
-Random Number Generator
-Type 3 — System/Utility (Continuous)
-Runs forever until killed, auto-updates.
+level 1 tasks : if we have one core and we open a task it will be opened but if you open another one it will be added in the ready queue and will be  starving and will be waiting for the previous one to be closed 
+lets say when fisrts one was running and we clicked multiple tasks to be open (none will  open) these will get cpu accrding to FCFs rule like the one you clicked at start will be opened and then the other and so on
 
-Clock
-Calendar
-RAM Viewer
-Process Viewer
-Timer/Alarm
-File Create
-File Info
+level 2 tasks: if we have one core and we open a task it will be opened but if you open another one it will be added in the ready queue and will be  starving and will be waiting for the previous one to be closed 
+lets say when fisrts one was running and we clicked multiple tasks to be open (none will  open) these will get cpu accrding to the priority rule like the one which has the lowest number , highest priority will be opened and so on
+
+
+
 ```
+
+## --------------------------------------------------------
+## MEMBER 2: SCHEDULING, ALGORITHMS & SYNCHRONIZATION GUIDE
+## --------------------------------------------------------
+This section explains exactly how the core OS mechanics function. If the professor asks how your part of the project works, use these points!
+
+### 1. The Multilevel Ready Queue (`ready_queue.cpp`)
+When a task is launched, it is assigned to one of three queues:
+* **Level 0 (Foreground):** Uses **Round Robin**. (Calculator, Notepad, WordCount, MineSweeper)
+* **Level 1 (Background):** Uses **FCFS**. (Music Sim, Print Sim, File Copy/Move/Delete)
+* **Level 2 (System):** Uses **Priority Scheduling**. (Clock, Calendar, Viewers, Log/Random/Password Gens)
+
+**How they get CPU:** The scheduler ALWAYS checks Level 0 first. If it's empty, it checks Level 1. If Level 1 is empty, it checks Level 2. Lower levels suffer from *Starvation* if higher levels are always full.
+
+### 2. True Multi-Processing (Cores)
+Instead of just faking cores with a counter, the OS boots exactly `N` `schedulerThread`s to represent `N` physical CPU Cores. 
+* If you have 4 Cores, 4 threads pull tasks from the queue simultaneously.
+* This solves the FCFS blocking issue! If a Level 1 task (like `fileCopy`) waits for user input, it ties up exactly 1 Core. The other 3 Cores continue to run your Foreground and System tasks perfectly. 
+
+### 3. Context Switching (`scheduler.cpp`)
+Context Switching is handled using Linux POSIX signals:
+* **Context Switch IN:** The OS sends `SIGCONT` to a process to give it the CPU.
+* **Context Switch OUT:** For Round Robin tasks (Level 0), the Core lets the task run for `0.2` seconds. When the quantum expires, it sends `SIGSTOP` to completely freeze the process, saves its state, throws it back in the Ready Queue, and picks up the next task. 
+* This rapid `0.2s` swapping is what allows 5 Calculators to seemingly run at the same time on only 1 Core!
+
+### 4. Synchronization Primitives (`scheduler.cpp`)
+All three required primitives are used to actively gate execution:
+* **Semaphore (`gTaskSemaphore`):** This is a counting semaphore that tracks how many tasks are ready. When the queue is empty, the Cores hit `sem_wait()` and physically go to Sleep, using 0% CPU. When a task is launched, `sem_post()` wakes up exactly one Core to handle it.
+* **Mutex (`gSchedMutex` & `gMutex`):** Locks the linked lists and resource variables so multiple Cores don't crash into each other when trying to pull from the same queue or update RAM simultaneously.
+* **Condition Variable (`gQueueCond`):** Used as a secondary wakeup mechanism inside the scheduler to prevent spurious thread wakeups if the queue somehow drains too fast.
+
+### 5. Kernel Mode (Simulated Interrupts)
+Because we cannot automatically detect when a separate Linux `xterm` window is waiting for keyboard input, we simulate Hardware Interrupts manually. 
+* By going into Kernel Mode (Option 21) and selecting **Pause (SIGSTOP)**, you manually interrupt a process, force it into the `Blocked` state, and free up its CPU Core. 
+* Using **Resume (SIGCONT)** moves it back to the `Ready` queue.
+
+
+
+#### ------------------------------------------------------------
+
+### how to show  (Ready → Running → Blocked → Ready)
+
+#### ------------------------------------------------------------
+
+
+## Step 1: Prove "Ready" and "Running"
+Boot the OS with 1 Core.
+Launch Calculator and Notepad.
+Type 21 to go into Kernel Mode, then type 1 to List all processes.
+Look at the State: line for both tasks.
+You will see one task says State: Running (because it currently holds the Core).
+You will see the other task says State: Ready (because it is waiting in the queue).
+(If you check the list multiple times, you will actually see them swapping states as the Round Robin scheduler passes the Core back and forth!)
+
+## Step 2: Prove "Blocked"
+
+Stay in Kernel Mode.
+Type 3 to Pause a process, and type in the PID of the Calculator.
+Type 1 to List all processes again.
+Look at the State: line for Calculator. It will now explicitly say State: Blocked!
+Explain to your professor: "Because my OS cannot natively intercept keyboard hardware interrupts from a separate Linux window, I manually simulated an interrupt by forcing the task into 
+the Blocked state using a kernel signal."
+
+## Step 3: Prove the cycle back to "Ready/Running"
+
+Type 4 to Resume the process, and type in the PID of the Calculator.
+Type 1 to List all processes one last time.
+You will see Calculator is no longer Blocked. The OS moved it back into the Ready Queue, and it will now flip back and forth between Ready and Running again.
