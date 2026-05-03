@@ -12,4 +12,10 @@ void addProcess(PCB* pcb);
 void removeProcess(PCB* pcb);
 void listProcess();
 
+// Kernel-mode process control
+void killProcess(int pid);    // SIGKILL → terminate
+void stopProcess(int pid);    // SIGSTOP → minimize/pause
+void resumeProcess(int pid);  // SIGCONT → resume
+void killAllProcesses();      // reset: kill every running process + free resources
+
 #endif

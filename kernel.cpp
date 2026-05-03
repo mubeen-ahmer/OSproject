@@ -1,5 +1,6 @@
 #include <iostream>
 #include <sys/wait.h>
+#include <signal.h>
 #include <pthread.h>
 #include "resource.h"
 #include "process.h"
@@ -47,17 +48,79 @@ void removeProcess(PCB* pcb) {
 void listProcess() {
     if (!head) { cout << "No processes running" << endl; return; }
     const char* stateNames[] = { "Ready", "Running", "Blocked", "Terminated" };
+    const char* levelNames[] = { "Foreground(RR)", "Background(FCFS)", "System(Priority)" };
     PCBNode* temp = head;
     while (temp) {
-        cout << "PID: "      << temp->pcb->pid                   << endl;
-        cout << "PPID: "     << temp->pcb->ppid                  << endl;
-        cout << "Name: "     << temp->pcb->name                  << endl;
-        cout << "State: "    << stateNames[temp->pcb->state]     << endl;
-        cout << "RAM: "      << temp->pcb->requiredRAM           << " MB" << endl;
-        cout << "HDD: "      << temp->pcb->requiredHardDisk      << " MB" << endl;
+        cout << "PID:       " << temp->pcb->pid                          << endl;
+        cout << "PPID:      " << temp->pcb->ppid                         << endl;
+        cout << "Name:      " << temp->pcb->name                         << endl;
+        cout << "State:     " << stateNames[temp->pcb->state]            << endl;
+        cout << "Level:     " << levelNames[temp->pcb->taskLevel]        << endl;
+        cout << "Priority:  " << temp->pcb->priority                     << endl;
+        cout << "RAM:       " << temp->pcb->requiredRAM   << " MB"       << endl;
+        cout << "HDD:       " << temp->pcb->requiredHardDisk << " MB"   << endl;
         cout << "------------------------" << endl;
         temp = temp->next;
     }
+}
+
+// ─── Process control (Kernel Mode) ───────────────────────────────────────────
+
+void killProcess(int pid) {
+    PCBNode* temp = head;
+    while (temp) {
+        if (temp->pcb->pid == pid) {
+            kill(pid, SIGKILL);
+            temp->pcb->state = Terminated;
+            cout << "Process " << pid << " killed." << endl;
+            return;
+        }
+        temp = temp->next;
+    }
+    cout << "PID " << pid << " not found." << endl;
+}
+
+void stopProcess(int pid) {
+    PCBNode* temp = head;
+    while (temp) {
+        if (temp->pcb->pid == pid) {
+            kill(pid, SIGSTOP);
+            temp->pcb->state = Blocked;
+            cout << "Process " << pid << " paused (minimized)." << endl;
+            return;
+        }
+        temp = temp->next;
+    }
+    cout << "PID " << pid << " not found." << endl;
+}
+
+void resumeProcess(int pid) {
+    PCBNode* temp = head;
+    while (temp) {
+        if (temp->pcb->pid == pid) {
+            kill(pid, SIGCONT);
+            temp->pcb->state = Running;
+            cout << "Process " << pid << " resumed." << endl;
+            return;
+        }
+        temp = temp->next;
+    }
+    cout << "PID " << pid << " not found." << endl;
+}
+
+void killAllProcesses() {
+    PCBNode* temp = head;
+    while (temp) {
+        kill(temp->pcb->pid, SIGKILL);
+        freeRam(temp->pcb->requiredRAM);
+        freeCore();
+        PCBNode* next = temp->next;
+        delete temp->pcb;
+        delete temp;
+        temp = next;
+    }
+    head = nullptr;
+    cout << "All processes terminated. Resources freed." << endl;
 }
 
 // ─── Process reaper ───────────────────────────────────────────────────────────

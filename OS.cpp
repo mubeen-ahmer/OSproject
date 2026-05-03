@@ -8,10 +8,13 @@
 #include "kernel.h"
 #include "resource.h"
 #include "process.h"
+#include "scheduler.h"
+#include "ready_queue.h"
 using namespace std;
 void gotoxy(int x, int y);
 void welcomeScreen();
 void goodbye();
+void kernelModeMenu();
 
 
 volatile bool osRunning = true;
@@ -26,7 +29,7 @@ void* reaperThread(void* arg) {
     return nullptr;
 }
 
-void launchTask(const char* name, const char* execPath, int ramAmount) {
+void launchTask(const char* name, const char* execPath, int ramAmount, TASK_LEVEL level = FOREGROUND, int priority = 0) {
     int p1fd[2];// pipe1 : parent writes, child reads
     int p2fd[2];// pipe2 : child writes, parent reads
 
@@ -104,8 +107,9 @@ void launchTask(const char* name, const char* execPath, int ramAmount) {
             permission = msg.c_str();
             write(p1fd[1], permission, strlen(permission));
             close(p1fd[1]); 
-            pcb = new PCB(pid, getpid(), name, Running, ramAmount);
+            pcb = new PCB(pid, getpid(), name, Running, ramAmount, 0, level, priority);
             addProcess(pcb);
+            scheduleProcess(pcb); // hand to scheduler queue
         }
 
         pthread_mutex_unlock(&gMutex); // FIX: unlock after done
@@ -126,15 +130,20 @@ int main(int argc, char* argv[]) {
     }
 
     welcomeScreen();
-    pthread_t reaperTid;
-    pthread_create(&reaperTid, nullptr, reaperThread, nullptr);
-    pthread_detach(reaperTid);   
+
+    // Start background threads
+    initScheduler(core);
+    pthread_t reaperTid, schedTid;
+    pthread_create(&reaperTid, nullptr, reaperThread,    nullptr);
+    pthread_create(&schedTid,  nullptr, schedulerThread, nullptr);
+    pthread_detach(reaperTid);
+    pthread_detach(schedTid);   
 
     int choice;
     do {
         system("clear");
         printStatus();
-        cout << "\n===== Windows =====" << endl;
+        cout << "\n===== NexusOS =====" << endl;
         cout << "1.  Calculator         [RAM: " << CALC_RAM           << " MB]" << endl;
         cout << "2.  Notepad            [RAM: " << NOTEPAD_RAM        << " MB]" << endl;
         cout << "3.  Clock              [RAM: " << CLOCK_RAM          << " MB]" << endl;
@@ -155,31 +164,37 @@ int main(int argc, char* argv[]) {
         cout << "18. Log Viewer         [RAM: " << LOG_VIEWER_RAM     << " MB]" << endl;
         cout << "19. Timer/Alarm        [RAM: " << TIMER_RAM          << " MB]" << endl;
         cout << "20. Password Generator [RAM: " << PASSWORD_GENERATOR_RAM << " MB]" << endl;
+        cout << "21. [KERNEL MODE]" << endl;
         cout << "0.  Shutdown" << endl;
         cout << "\nSelect: ";
         cin >> choice;
 
         switch (choice) {
-            case  1: launchTask("calculator", "tasks/calculator", CALC_RAM);    break;
-            case  2: launchTask("notepad", "tasks/notepad", NOTEPAD_RAM);    break;
-            case  3: launchTask("clock", "tasks/clock", CLOCK_RAM);    break;
-            case  4: launchTask("calender", "tasks/calender", CALENDAR_RAM);    break;
-            case  5: launchTask("fileCopy", "tasks/fileCopy", FILE_COPY_RAM);    break;
-            case  6: launchTask("fileMove", "tasks/fileMove", FILE_MOVE_RAM);    break;
-            case  7: launchTask("fileDelete", "tasks/fileDelete", FILE_DELETE_RAM);    break;
-            case  8: launchTask("fileCreate", "tasks/fileCreate", FILE_CREATE_RAM);    break;
-            case  9: launchTask("fileInfo", "tasks/fileInfo", FILE_INFO_RAM);    break;
-            case 10: launchTask("randomNumGen", "tasks/randomNumGen", RAND_GEN_RAM);    break;
-            case 11: launchTask("wordCount", "tasks/wordCount", WORD_COUNT_RAM);    break;
-            case 12: launchTask("minesweeper", "tasks/minesweeper", MINESWEEPER_RAM);    break;
-            case 13: launchTask("musicSim", "tasks/musicSim", MUSIC_SIM_RAM);    break;
-            case 14: launchTask("printSim", "tasks/printSim", PRINT_SIM_RAM);    break;
-            case 15: launchTask("ramViewer", "tasks/ramViewer", RAM_VIEWER_RAM);    break;
-            case 16: launchTask("procViewer", "tasks/procViewer", PROC_VIEWER_RAM);    break;
-            case 17: launchTask("logGenerator", "tasks/logGenerator", LOG_GEN_RAM);    break;
-            case 18: launchTask("logViewer", "tasks/logViewer", LOG_VIEWER_RAM);    break;
-            case 19: launchTask("timer", "tasks/timer", TIMER_RAM);    break;
-            case 20: launchTask("passwordGenerator","tasks/passwordGenerator", PASSWORD_GENERATOR_RAM); break;
+            // Foreground/Interactive — Level 0, Round Robin
+            case  1: launchTask("calculator",  "tasks/calculator",  CALC_RAM,      FOREGROUND); break;
+            case  2: launchTask("notepad",      "tasks/notepad",      NOTEPAD_RAM,   FOREGROUND); break;
+            case 11: launchTask("wordCount",    "tasks/wordCount",    WORD_COUNT_RAM,FOREGROUND); break;
+            case 12: launchTask("minesweeper",  "tasks/minesweeper",  MINESWEEPER_RAM,FOREGROUND); break;
+            // Background/Auto-finish — Level 1, FCFS
+            case  5: launchTask("fileCopy",     "tasks/fileCopy",     FILE_COPY_RAM, BACKGROUND); break;
+            case  6: launchTask("fileMove",     "tasks/fileMove",     FILE_MOVE_RAM, BACKGROUND); break;
+            case  7: launchTask("fileDelete",   "tasks/fileDelete",   FILE_DELETE_RAM,BACKGROUND); break;
+            case 10: launchTask("randomNumGen", "tasks/randomNumGen", RAND_GEN_RAM,  BACKGROUND); break;
+            case 13: launchTask("musicSim",     "tasks/musicSim",     MUSIC_SIM_RAM, BACKGROUND); break;
+            case 14: launchTask("printSim",     "tasks/printSim",     PRINT_SIM_RAM, BACKGROUND); break;
+            case 17: launchTask("logGenerator", "tasks/logGenerator", LOG_GEN_RAM,   BACKGROUND); break;
+            case 20: launchTask("passwordGenerator","tasks/passwordGenerator",PASSWORD_GENERATOR_RAM,BACKGROUND); break;
+            // System/Utility — Level 2, Priority (lower number = runs first)
+            case  3: launchTask("clock",        "tasks/clock",        CLOCK_RAM,     SYSTEM, 1); break;
+            case  4: launchTask("calender",     "tasks/calender",     CALENDAR_RAM,  SYSTEM, 2); break;
+            case  8: launchTask("fileCreate",   "tasks/fileCreate",   FILE_CREATE_RAM,SYSTEM,3); break;
+            case  9: launchTask("fileInfo",     "tasks/fileInfo",     FILE_INFO_RAM,  SYSTEM,3); break;
+            case 15: launchTask("ramViewer",    "tasks/ramViewer",    RAM_VIEWER_RAM, SYSTEM,1); break;
+            case 16: launchTask("procViewer",   "tasks/procViewer",   PROC_VIEWER_RAM,SYSTEM,1); break;
+            case 18: launchTask("logViewer",    "tasks/logViewer",    LOG_VIEWER_RAM, SYSTEM,2); break;
+            case 19: launchTask("timer",        "tasks/timer",        TIMER_RAM,      SYSTEM,2); break;
+            // Kernel Mode
+            case 21: kernelModeMenu(); break;
             case  0: goodbye(); break;
             default:
                 cout << "Invalid choice" << endl;
@@ -189,9 +204,82 @@ int main(int argc, char* argv[]) {
     } while (choice != 0);
 
     osRunning = false;
-    sleep(2);
-
+    pthread_mutex_lock(&gMutex);
+    killAllProcesses();
+    pthread_mutex_unlock(&gMutex);
+    sleep(1);
     return 0;
+}
+
+// ─── Kernel Mode Menu ─────────────────────────────────────────────────────────
+void kernelModeMenu() {
+    int kChoice;
+    do {
+        system("clear");
+        cout << "╔══════════════════════════════╗" << endl;
+        cout << "║       *** KERNEL MODE ***    ║" << endl;
+        cout << "╚══════════════════════════════╝" << endl;
+        pthread_mutex_lock(&gMutex);
+        printStatus();
+        pthread_mutex_unlock(&gMutex);
+        cout << endl;
+        cout << "1. List all processes"    << endl;
+        cout << "2. Kill process  (SIGKILL)" << endl;
+        cout << "3. Pause process (SIGSTOP)" << endl;
+        cout << "4. Resume process(SIGCONT)" << endl;
+        cout << "5. Reset — kill all & free resources" << endl;
+        cout << "0. Back to User Mode" << endl;
+        cout << "\nKernel> ";
+        cin >> kChoice;
+
+        int pid;
+        switch (kChoice) {
+            case 1:
+                system("clear");
+                pthread_mutex_lock(&gMutex);
+                listProcess();
+                pthread_mutex_unlock(&gMutex);
+                cout << "\nPress ENTER to continue...";
+                cin.ignore(); cin.get();
+                break;
+            case 2:
+                cout << "Enter PID to kill: ";
+                cin >> pid;
+                pthread_mutex_lock(&gMutex);
+                killProcess(pid);
+                pthread_mutex_unlock(&gMutex);
+                sleep(1);
+                break;
+            case 3:
+                cout << "Enter PID to pause: ";
+                cin >> pid;
+                pthread_mutex_lock(&gMutex);
+                stopProcess(pid);
+                pthread_mutex_unlock(&gMutex);
+                sleep(1);
+                break;
+            case 4:
+                cout << "Enter PID to resume: ";
+                cin >> pid;
+                pthread_mutex_lock(&gMutex);
+                resumeProcess(pid);
+                pthread_mutex_unlock(&gMutex);
+                sleep(1);
+                break;
+            case 5:
+                pthread_mutex_lock(&gMutex);
+                killAllProcesses();
+                pthread_mutex_unlock(&gMutex);
+                reprintStatusInPlace();
+                sleep(1);
+                break;
+            case 0:
+                break;
+            default:
+                cout << "Invalid." << endl;
+                sleep(1);
+        }
+    } while (kChoice != 0);
 }
 
 // a function copied from internet, it move the cursor at x, y cordinate on console
@@ -201,9 +289,25 @@ void gotoxy(int x, int y) {
 
 void welcomeScreen() {
     system("clear");
-    gotoxy(29, 12);
-    cout << "Welcome to the Windows" << endl;
-    sleep(1);
+    cout << "\n\n";
+    cout << "    _   _                        ___  ____  " << endl;
+    cout << "   | \\ | | _____  ___   _ ___   / _ \\/ ___| " << endl;
+    cout << "   |  \\| |/ _ \\ \\/ / | | / __| | | | \\___ \\ " << endl;
+    cout << "   | |\\  |  __/>  <| |_| \\__ \\ | |_| |___) |" << endl;
+    cout << "   |_| \\_|\\___/_/\\_\\\\__,_|___/  \\___/|____/ " << endl;
+    cout << "                                            " << endl;
+    cout << "          v1.0 - Initializing Kernel...     " << endl;
+    cout << "\n\n   [";
+    cout.flush();
+    
+    // Simulate loading bar
+    for (int i = 0; i < 30; i++) {
+        cout << "#";
+        cout.flush();
+        usleep(50000); // 50ms delay per block (1.5 seconds total)
+    }
+    cout << "] 100%\n" << endl;
+    usleep(500000); // half second pause before menu
     system("clear");
 }
 
