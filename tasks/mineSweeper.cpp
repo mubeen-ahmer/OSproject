@@ -245,6 +245,5 @@ int main(){
     }
 
     disableRawMode();
-    sleep(1);
     return 0;
 }

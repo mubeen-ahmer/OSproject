@@ -15,8 +15,8 @@
 #define MINESWEEPER_RAM  3
 #define MUSIC_SIM_RAM    2
 #define PRINT_SIM_RAM    2
-#define RAM_VIEWER_RAM   1
-#define PROC_VIEWER_RAM  1
+#define COIN_FLIP_RAM    1
+#define UNIT_CONVERTOR_RAM  1
 #define LOG_GEN_RAM      1
 #define RAND_GEN_RAM     1
 #define TIMER_RAM        1

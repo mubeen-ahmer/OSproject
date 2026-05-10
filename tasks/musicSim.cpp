@@ -30,8 +30,7 @@ void* musicThread(void* arg){
 int main(){
     string song;
     cout << "--Music Simulator--" << endl;
-    cout << "Enter song name : "; 
-    cin.ignore();
+    cout << "Enter song name : ";
     getline(cin, song);
     cout << "Enter song duration(seconds) : "; cin >> duration;
 

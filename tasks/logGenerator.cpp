@@ -13,7 +13,6 @@ int main(){
     do{
         cout << "--Log Generator--" << endl;
         cout << "Enter log message : "; 
-        cin.ignore();
         getline(cin, message);
 
         time_t now = time(0);

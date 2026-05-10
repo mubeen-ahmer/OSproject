@@ -146,6 +146,8 @@ int main(int argc, char* argv[]) {
         cout << " 2. Notepad            [RAM: " << NOTEPAD_RAM        << " MB]" << endl;
         cout << "11. Word Count         [RAM: " << WORD_COUNT_RAM     << " MB]" << endl;
         cout << "12. Mine Sweeper       [RAM: " << MINESWEEPER_RAM    << " MB]" << endl;
+        cout << "16. Unit Convertor     [RAM: " << UNIT_CONVERTOR_RAM << " MB]" << endl;
+        cout << "15. Coin Flip          [RAM: " << COIN_FLIP_RAM     << "  MB]" << endl;
 
         cout << "\n[Level 1: BACKGROUND - FCFS]" << endl;
         cout << "13. Music Sim          [RAM: " << MUSIC_SIM_RAM      << " MB]" << endl;
@@ -157,8 +159,6 @@ int main(int argc, char* argv[]) {
         cout << "\n[Level 2: SYSTEM - Priority]" << endl;
         cout << " 3. Clock              [Pri:1 | RAM: " << CLOCK_RAM          << " MB]" << endl;
         cout << " 4. Calendar           [Pri:1 | RAM: " << CALENDAR_RAM       << " MB]" << endl;
-        cout << "15. RAM Viewer         [Pri:1 | RAM: " << RAM_VIEWER_RAM     << " MB]" << endl;
-        cout << "16. Process Viewer     [Pri:1 | RAM: " << PROC_VIEWER_RAM    << " MB]" << endl;
         cout << " 8. File Create        [Pri:2 | RAM: " << FILE_CREATE_RAM    << " MB]" << endl;
         cout << " 9. File Info          [Pri:2 | RAM: " << FILE_INFO_RAM      << " MB]" << endl;
         cout << "19. Timer/Alarm        [Pri:2 | RAM: " << TIMER_RAM          << " MB]" << endl;
@@ -179,7 +179,9 @@ int main(int argc, char* argv[]) {
             case  1: launchTask("calculator",  "tasks/calculator",  CALC_RAM,      FOREGROUND); break;
             case  2: launchTask("notepad",      "tasks/notepad",      NOTEPAD_RAM,   FOREGROUND); break;
             case 11: launchTask("wordCount",    "tasks/wordCount",    WORD_COUNT_RAM,FOREGROUND); break;
-            case 12: launchTask("minesweeper",  "tasks/minesweeper",  MINESWEEPER_RAM,FOREGROUND); break;
+            case 12: launchTask("mineSweeper",  "tasks/mineSweeper",  MINESWEEPER_RAM,FOREGROUND); break;
+            case 16: launchTask("unitConvertor",   "tasks/unitConvertor",   UNIT_CONVERTOR_RAM,FOREGROUND); break;
+            case 15: launchTask("coinFlip",    "tasks/coinFlip",      COIN_FLIP_RAM, FOREGROUND); break;
             // Background/Auto-finish — Level 1, FCFS
             case 13: launchTask("musicSim",     "tasks/musicSim",     MUSIC_SIM_RAM, BACKGROUND); break;
             case 14: launchTask("printSim",     "tasks/printSim",     PRINT_SIM_RAM, BACKGROUND); break;
@@ -189,8 +191,6 @@ int main(int argc, char* argv[]) {
             // System/Utility — Level 2, Priority (lower number = runs first)
             case  3: launchTask("clock",        "tasks/clock",        CLOCK_RAM,     SYSTEM, 1); break;
             case  4: launchTask("calender",     "tasks/calender",     CALENDAR_RAM,  SYSTEM, 1); break;
-            case 15: launchTask("ramViewer",    "tasks/ramViewer",    RAM_VIEWER_RAM, SYSTEM,1); break;
-            case 16: launchTask("procViewer",   "tasks/procViewer",   PROC_VIEWER_RAM,SYSTEM,1); break;
             case  8: launchTask("fileCreate",   "tasks/fileCreate",   FILE_CREATE_RAM,SYSTEM,2); break;
             case  9: launchTask("fileInfo",     "tasks/fileInfo",     FILE_INFO_RAM,  SYSTEM,2); break;
             case 19: launchTask("timer",        "tasks/timer",        TIMER_RAM,      SYSTEM,2); break;
